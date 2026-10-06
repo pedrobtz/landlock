@@ -46,3 +46,15 @@ restrict_self(
 
 The report, invisibly; see
 [`apply_policy()`](https://pedrobtz.github.io/landlock/reference/apply_policy.md).
+
+## Examples
+
+``` r
+# Irreversible, so shown in a throwaway child. Where Landlock is
+# available, everything outside R's own files becomes unreadable.
+eval_fork({
+  restrict_self(read = c(R.home(), .libPaths()))
+  tryCatch(readLines("/etc/passwd", n = 1), warning = conditionMessage)
+})
+#> [1] "cannot open file '/etc/passwd': Permission denied"
+```

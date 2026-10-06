@@ -62,3 +62,32 @@ architecture;
 [`preset()`](https://pedrobtz.github.io/landlock/reference/preset.md)
 provides the sets `"dangerous"`, `"no_exec"` and `"no_net"`.
 `seccomp_status()` reports the filter state of this process.
+
+## Examples
+
+``` r
+seccomp_status()
+#> $mode
+#> [1] 0
+#> 
+#> $filters
+#> [1] 0
+#> 
+head(syscall_table())
+#>      name  nr
+#> 1    read   0
+#> 2   write   1
+#> 3    open   2
+#> 4  openat 257
+#> 5 openat2 437
+#> 6   close   3
+
+# Irreversible, so shown in a throwaway child; Linux only.
+if (Sys.info()[["sysname"]] == "Linux") {
+  eval_fork({
+    seccomp_deny("getppid")
+    getppid()  # -1: the call failed with EPERM
+  })
+}
+#> [1] -1
+```

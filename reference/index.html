@@ -15,7 +15,13 @@
     </button>
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
-      <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+      <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="../articles/landlock.html">Get started</a></li>
+<li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/examples.html">Worked examples</a></li>
+    <li><a class="dropdown-item" href="../articles/layers.html">The confinement layers</a></li>
+  </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -32,7 +38,7 @@
     </div>
 
     <div class="section level2">
-      <h2 id="all-functions">All functions<a class="anchor" aria-label="anchor" href="#all-functions"></a></h2>
+      <h2 id="evaluate-and-run-in-a-confined-child">Evaluate and run in a confined child<a class="anchor" aria-label="anchor" href="#evaluate-and-run-in-a-confined-child"></a></h2>
 
 
 
@@ -43,34 +49,6 @@
 
       <dl><dt>
 
-          <code><a href="aa_change_profile.html">aa_change_profile()</a></code>
-
-        </dt>
-        <dd>Change AppArmor profile</dd>
-
-        <dt>
-
-          <code><a href="apply_policy.html">apply_policy()</a></code> <code><a href="apply_policy.html">confine()</a></code>
-
-        </dt>
-        <dd>Apply a policy</dd>
-
-        <dt>
-
-          <code><a href="caps_drop_all.html">caps_drop_all()</a></code> <code><a href="caps_drop_all.html">caps_keep()</a></code> <code><a href="caps_drop_all.html">no_new_privs()</a></code>
-
-        </dt>
-        <dd>Capabilities and no_new_privs</dd>
-
-        <dt>
-
-          <code><a href="chroot.html">chroot()</a></code>
-
-        </dt>
-        <dd>Change root directory</dd>
-
-        <dt>
-
           <code><a href="eval_safe.html">eval_safe()</a></code> <code><a href="eval_safe.html">eval_fork()</a></code>
 
         </dt>
@@ -78,12 +56,28 @@
 
         <dt>
 
+          <code><a href="run.html">run()</a></code>
+
+        </dt>
+        <dd>Run a program in a confined child process</dd>
+
+        <dt>
+
           <code><a href="last_report.html">last_report()</a></code>
 
         </dt>
         <dd>The report of the last enforcement</dd>
+      </dl></div><div class="section level2">
+      <h2 id="policies">Policies<a class="anchor" aria-label="anchor" href="#policies"></a></h2>
 
-        <dt>
+      <div class="section-desc"><p>Describe what the child may do. Policies are plain data.</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
 
           <code><a href="policy.html">policy()</a></code> <code><a href="policy.html">fs()</a></code> <code><a href="policy.html">net()</a></code> <code><a href="policy.html">scope()</a></code> <code><a href="policy.html">limits()</a></code> <code><a href="policy.html">ids()</a></code> <code><a href="policy.html">apparmor()</a></code> <code><a href="policy.html">syscalls()</a></code> <code><a href="policy.html">caps()</a></code>
 
@@ -99,31 +93,42 @@
 
         <dt>
 
-          <code><a href="process.html">getuid()</a></code> <code><a href="process.html">getgid()</a></code> <code><a href="process.html">geteuid()</a></code> <code><a href="process.html">getegid()</a></code> <code><a href="process.html">getpid()</a></code> <code><a href="process.html">getppid()</a></code> <code><a href="process.html">getpgid()</a></code> <code><a href="process.html">getpriority()</a></code> <code><a href="process.html">setuid()</a></code> <code><a href="process.html">seteuid()</a></code> <code><a href="process.html">setgid()</a></code> <code><a href="process.html">setegid()</a></code> <code><a href="process.html">setpgid()</a></code> <code><a href="process.html">setpriority()</a></code> <code><a href="process.html">kill()</a></code>
+          <code><a href="apply_policy.html">apply_policy()</a></code> <code><a href="apply_policy.html">confine()</a></code>
 
         </dt>
-        <dd>Process information</dd>
+        <dd>Apply a policy</dd>
+      </dl></div><div class="section level2">
+      <h2 id="what-this-kernel-offers">What this kernel offers<a class="anchor" aria-label="anchor" href="#what-this-kernel-offers"></a></h2>
 
-        <dt>
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="status.html">status()</a></code>
+
+        </dt>
+        <dd>What this kernel offers</dd>
+      </dl></div><div class="section level2">
+      <h2 id="single-layers-on-the-calling-process">Single layers, on the calling process<a class="anchor" aria-label="anchor" href="#single-layers-on-the-calling-process"></a></h2>
+
+      <div class="section-desc"><p>Irreversible. Use them inside eval_safe() or in a process you own.</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
 
           <code><a href="restrict_self.html">restrict_self()</a></code>
 
         </dt>
         <dd>Restrict this process with Landlock</dd>
-
-        <dt>
-
-          <code><a href="rlimit.html">rlimit_all()</a></code> <code><a href="rlimit.html">rlimit_as()</a></code> <code><a href="rlimit.html">rlimit_core()</a></code> <code><a href="rlimit.html">rlimit_cpu()</a></code> <code><a href="rlimit.html">rlimit_data()</a></code> <code><a href="rlimit.html">rlimit_fsize()</a></code> <code><a href="rlimit.html">rlimit_memlock()</a></code> <code><a href="rlimit.html">rlimit_nofile()</a></code> <code><a href="rlimit.html">rlimit_nproc()</a></code> <code><a href="rlimit.html">rlimit_stack()</a></code>
-
-        </dt>
-        <dd>Resource limits</dd>
-
-        <dt>
-
-          <code><a href="run.html">run()</a></code>
-
-        </dt>
-        <dd>Run a program in a confined child process</dd>
 
         <dt>
 
@@ -134,6 +139,13 @@
 
         <dt>
 
+          <code><a href="caps_drop_all.html">caps_drop_all()</a></code> <code><a href="caps_drop_all.html">caps_keep()</a></code> <code><a href="caps_drop_all.html">no_new_privs()</a></code>
+
+        </dt>
+        <dd>Capabilities and no_new_privs</dd>
+
+        <dt>
+
           <code><a href="setids.html">setids()</a></code>
 
         </dt>
@@ -141,10 +153,40 @@
 
         <dt>
 
-          <code><a href="status.html">status()</a></code>
+          <code><a href="chroot.html">chroot()</a></code>
 
         </dt>
-        <dd>What this kernel offers</dd>
+        <dd>Change root directory</dd>
+      </dl></div><div class="section level2">
+      <h2 id="process-limits-and-ids-the-unix-api-">Process, limits and ids (the ‘unix’ API)<a class="anchor" aria-label="anchor" href="#process-limits-and-ids-the-unix-api-"></a></h2>
+
+      <div class="section-desc"><p>The functions of the ‘unix’ package, with the same names and arguments.</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="rlimit.html">rlimit_all()</a></code> <code><a href="rlimit.html">rlimit_as()</a></code> <code><a href="rlimit.html">rlimit_core()</a></code> <code><a href="rlimit.html">rlimit_cpu()</a></code> <code><a href="rlimit.html">rlimit_data()</a></code> <code><a href="rlimit.html">rlimit_fsize()</a></code> <code><a href="rlimit.html">rlimit_memlock()</a></code> <code><a href="rlimit.html">rlimit_nofile()</a></code> <code><a href="rlimit.html">rlimit_nproc()</a></code> <code><a href="rlimit.html">rlimit_stack()</a></code>
+
+        </dt>
+        <dd>Resource limits</dd>
+
+        <dt>
+
+          <code><a href="process.html">getuid()</a></code> <code><a href="process.html">getgid()</a></code> <code><a href="process.html">geteuid()</a></code> <code><a href="process.html">getegid()</a></code> <code><a href="process.html">getpid()</a></code> <code><a href="process.html">getppid()</a></code> <code><a href="process.html">getpgid()</a></code> <code><a href="process.html">getpriority()</a></code> <code><a href="process.html">setuid()</a></code> <code><a href="process.html">seteuid()</a></code> <code><a href="process.html">setgid()</a></code> <code><a href="process.html">setegid()</a></code> <code><a href="process.html">setpgid()</a></code> <code><a href="process.html">setpriority()</a></code> <code><a href="process.html">kill()</a></code>
+
+        </dt>
+        <dd>Process information</dd>
+
+        <dt>
+
+          <code><a href="userinfo.html">user_info()</a></code> <code><a href="userinfo.html">group_info()</a></code>
+
+        </dt>
+        <dd>User and group information</dd>
 
         <dt>
 
@@ -155,16 +197,17 @@
 
         <dt>
 
-          <code><a href="userinfo.html">user_info()</a></code> <code><a href="userinfo.html">group_info()</a></code>
+          <code><a href="aa_change_profile.html">aa_change_profile()</a></code>
 
         </dt>
-        <dd>User and group information</dd>
+        <dd>Change AppArmor profile</dd>
       </dl></div>
-  </main></div>
+  </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
+    </nav></aside></div>
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by Pedro Z.</p>
+  <p>Developed by Pedro Baltazar.</p>
 </div>
 
 <div class="pkgdown-footer-right">

@@ -1,0 +1,111 @@
+# The confinement layers
+
+A policy is a set of independent layers. Each one closes a different
+door, each one needs something from the kernel, and each one degrades on
+its own. They are applied in a fixed order, because several of them need
+privileges that later ones take away:
+
+1.  AppArmor profile change
+2.  Landlock (filesystem, TCP, scopes)
+3.  capability bounding set
+4.  seccomp filter
+5.  user and group switch
+6.  capability sets and `no_new_privs`
+7.  resource limits
+
+Before any of them, a child that receives a policy closes every file
+descriptor it inherited except its standard streams: Landlock checks
+access when a file is opened, so a file the session already had open
+would otherwise stay usable.
+
+## Landlock: files, TCP, scopes
+
+[Landlock](https://landlock.io/) lets an unprivileged process restrict
+itself. It is an allow-list: once
+[`fs()`](https://pedrobtz.github.io/landlock/reference/policy.md) is in
+a policy, every file access not covered by a rule is denied with
+`EACCES`.
+
+| Feature                              | Kernel | Landlock ABI |
+|--------------------------------------|--------|--------------|
+| read, write, execute, create, remove | 5.13   | 1            |
+| rename and link across directories   | 5.19   | 2            |
+| truncate                             | 6.2    | 3            |
+| TCP bind and connect                 | 6.7    | 4            |
+| device ioctl                         | 6.10   | 5            |
+| signal and abstract socket scopes    | 6.12   | 6            |
+| audit logging flags                  | 6.15   | 7            |
+
+The package always asks the kernel to handle every right it knows, so a
+newer kernel never leaves a right unmediated. Rights a kernel lacks are
+dropped from the request, and the report names the layer as skipped.
+
+What Landlock does not cover: reading file metadata (`stat()`), UDP,
+Unix sockets bound to a path (they are files:
+[`fs()`](https://pedrobtz.github.io/landlock/reference/policy.md) covers
+them), anything already open before the policy applied, and mapping a
+readable file as executable memory (`mmap(PROT_EXEC)`, which is how
+shared libraries load: `exec` governs starting programs).
+
+## seccomp: system calls
+
+A seccomp filter is a small program the kernel runs on every system
+call.
+[`syscalls()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+builds a deny-list: the listed calls fail with an error (or kill the
+process), everything else proceeds. Calls made through another
+architecture’s interface, such as 32-bit calls on a 64-bit kernel, are
+always refused, since their numbers would mean different calls.
+
+The `"dangerous"` set removes what an R computation never needs and what
+widens the kernel’s attack surface: debugging other processes, mounting,
+namespaces, keyrings, `bpf`, `io_uring`, kernel modules, leaving the
+process group. Denying `unshare` also refuses `clone()` with namespace
+flags, and `clone3` fails with `ENOSYS`, so the C library falls back to
+`clone()`, whose flags a filter can inspect. `"no_exec"` removes
+`execve`, so no program can start. `"no_net"` removes sockets, which
+also stops UDP and DNS.
+
+A deny-list rather than an allow-list: R’s system call footprint depends
+on the BLAS, on the packages loaded and on the C library, and an
+allow-list that is too tight fails in ways that are hard to diagnose.
+
+## Capabilities and no_new_privs
+
+[`caps()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+empties the capability sets of the child, so a process running as root
+keeps the uid but loses the powers. Emptying the *bounding* set, which
+stops anything from regaining a capability, needs `CAP_SETPCAP`; an
+unprivileged process has nothing to lose, and the report says the
+bounding set was kept. `no_new_privs` stops set-user-id programs and
+file capabilities from granting privileges; Landlock and seccomp set it
+too.
+
+## Resource limits and user switching
+
+[`limits()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+sets resource limits (`setrlimit()`), as ceilings: a value above the
+current hard limit keeps the hard limit. `memory` limits the address
+space, which some BLAS libraries reserve generously; set
+`OPENBLAS_NUM_THREADS=1` or give them room.
+[`ids()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+switches user and group and needs root.
+
+## Containers
+
+Docker’s and containerd’s default seccomp profiles allow the Landlock
+and seccomp system calls, so every layer above works inside a container
+whose host kernel has Landlock. They block user namespaces, which a
+later version will use for mount and network isolation.
+
+## Threads
+
+Landlock restricts a thread and what it creates afterwards. A forked
+child has one thread, so
+[`eval_safe()`](https://pedrobtz.github.io/landlock/reference/eval_safe.md)
+and [`run()`](https://pedrobtz.github.io/landlock/reference/run.md) are
+always fully confined.
+[`confine()`](https://pedrobtz.github.io/landlock/reference/apply_policy.md)
+applies to the session, which may already run other threads; it refuses
+unless `force = TRUE`. The seccomp layer synchronises all threads when
+the kernel allows, and the report says when it could not.

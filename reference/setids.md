@@ -18,3 +18,15 @@ setids(uid = NULL, gid = NULL)
 ## Value
 
 `NULL`, invisibly.
+
+## Examples
+
+``` r
+# Root only, irreversible: shown in a throwaway child.
+if (getuid() == 0) {
+  eval_fork({
+    setids(65534, 65534)
+    c(getuid(), getgid())
+  })
+}
+```

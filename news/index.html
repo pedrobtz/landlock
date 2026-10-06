@@ -15,7 +15,13 @@
     </button>
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
-      <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+      <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="../articles/landlock.html">Get started</a></li>
+<li class="nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/examples.html">Worked examples</a></li>
+    <li><a class="dropdown-item" href="../articles/layers.html">The confinement layers</a></li>
+  </ul></li>
 <li class="active nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -33,14 +39,25 @@
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="0.0.0.9000" id="landlock-0009000">landlock 0.0.0.9000<a class="anchor" aria-label="anchor" href="#landlock-0009000"></a></h2>
-<ul><li>Initial CRAN submission.</li>
+<h2 class="pkg-version" data-toc-text="0.1.0" id="landlock-010">landlock 0.1.0<a class="anchor" aria-label="anchor" href="#landlock-010"></a></h2>
+<p>First release.</p>
+<ul><li><p>A drop-in replacement for the ‘unix’ package: all 32 of its exports, with the same names, arguments and results (<code><a href="../reference/eval_safe.html">eval_safe()</a></code>, <code><a href="../reference/eval_safe.html">eval_fork()</a></code>, the <code>rlimit_*()</code> family, the process and id functions, <code><a href="../reference/userinfo.html">user_info()</a></code>, <code><a href="../reference/userinfo.html">group_info()</a></code>, <code><a href="../reference/chroot.html">chroot()</a></code>, <code><a href="../reference/sys_config.html">sys_config()</a></code>, <code><a href="../reference/sys_config.html">aa_config()</a></code>). <code>eval_safe(profile =)</code> changes the AppArmor profile through <code>/proc</code>, without ‘libapparmor’.</p></li>
+<li><p><code><a href="../reference/eval_safe.html">eval_safe()</a></code> gains a <code>policy</code> argument; <code><a href="../reference/run.html">run()</a></code> executes a program under one; <code><a href="../reference/apply_policy.html">confine()</a></code> applies one to the session.</p></li>
+<li>
+<p>Policies are built with <code><a href="../reference/policy.html">policy()</a></code>, <code><a href="../reference/policy.html">fs()</a></code>, <code><a href="../reference/policy.html">net()</a></code>, <code><a href="../reference/policy.html">scope()</a></code>, <code><a href="../reference/policy.html">syscalls()</a></code>, <code><a href="../reference/policy.html">caps()</a></code>, <code><a href="../reference/policy.html">limits()</a></code>, <code><a href="../reference/policy.html">ids()</a></code> and <code><a href="../reference/policy.html">apparmor()</a></code>, or started from <code>preset("numeric")</code>, <code>preset("install")</code> and <code>preset("plumber")</code>. Layers:</p>
+<ul><li>Landlock filesystem rules, TCP port rules (kernel ABI 4) and scopes (ABI 6);</li>
+<li>a seccomp-bpf system call filter, with the sets <code>"dangerous"</code>, <code>"no_exec"</code> and <code>"no_net"</code>;</li>
+<li>capability dropping and <code>no_new_privs</code>;</li>
+<li>resource limits and user switching.</li>
+</ul></li>
+<li><p>A layer the kernel cannot provide is skipped and reported (<code><a href="../reference/last_report.html">last_report()</a></code>); <code>policy(best_effort = FALSE)</code> makes it an error. <code><a href="../reference/status.html">status()</a></code> shows what the running kernel offers.</p></li>
+<li><p>Single-layer functions for the calling process: <code><a href="../reference/restrict_self.html">restrict_self()</a></code>, <code><a href="../reference/seccomp_deny.html">seccomp_deny()</a></code>, <code><a href="../reference/caps_drop_all.html">caps_drop_all()</a></code>, <code><a href="../reference/caps_drop_all.html">caps_keep()</a></code>, <code><a href="../reference/caps_drop_all.html">no_new_privs()</a></code>, <code><a href="../reference/setids.html">setids()</a></code>.</p></li>
 </ul></div>
   </main></div>
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by Pedro Z.</p>
+  <p>Developed by Pedro Baltazar.</p>
 </div>
 
 <div class="pkgdown-footer-right">

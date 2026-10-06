@@ -34,11 +34,11 @@ Useful links:
 
 ## Author
 
-**Maintainer**: Pedro Z <pedrobtz@gmail.com>
+**Maintainer**: Pedro Baltazar <pedrobtz@gmail.com>
 
 Authors:
 
-- Pedro Z <pedrobtz@gmail.com>
+- Pedro Baltazar <pedrobtz@gmail.com>
 
 Other contributors:
 

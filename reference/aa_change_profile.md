@@ -20,3 +20,13 @@ aa_change_profile(profile)
 ## Value
 
 `NULL`, invisibly.
+
+## Examples
+
+``` r
+# Needs AppArmor and a loaded profile; irreversible, so in a child.
+if (isTRUE(aa_config()$enabled)) {
+  try(eval_fork(aa_change_profile("unconfined")))
+}
+#> NULL
+```

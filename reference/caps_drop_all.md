@@ -34,3 +34,16 @@ invisibly. `no_new_privs()`: `TRUE`, invisibly.
 `no_new_privs()` sets the `no_new_privs` flag: neither the process nor
 its children can gain privileges through `execve()` (set-user-id
 programs, file capabilities). Landlock and seccomp set it as well.
+
+## Examples
+
+``` r
+# Irreversible, so shown in a throwaway child; Linux only.
+if (Sys.info()[["sysname"]] == "Linux") {
+  eval_fork({
+    caps_drop_all()
+    status()$caps$effective
+  })
+}
+#> [1] "0000000000000000"
+```

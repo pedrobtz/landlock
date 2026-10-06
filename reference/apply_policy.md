@@ -50,3 +50,18 @@ restricts only the calling thread and the threads and processes it
 creates later, so `confine()` refuses to run in a session that already
 has other threads (a multi-threaded BLAS, for example) unless
 `force = TRUE`.
+
+## Examples
+
+``` r
+# Irreversible, so shown in a throwaway child:
+eval_fork({
+  confine(limits(policy(), cpu = 60))
+  rlimit_cpu()$cur
+})
+#> [1] 60
+
+eval_fork(apply_policy(limits(policy(), cpu = 60)))
+#> <landlock report> Landlock ABI 7 
+#>   limits          applied  cpu=60
+```

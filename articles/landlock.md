@@ -1,0 +1,203 @@
+# Getting started with landlock
+
+landlock confines R code to what it needs. You describe what a piece of
+code may do as a *policy*; the package forks the R session, has the
+Linux kernel enforce the policy on the child, evaluates the code there
+and hands back the result. The session itself is never restricted.
+
+## Evaluate code in a confined child
+
+[`eval_safe()`](https://pedrobtz.github.io/landlock/reference/eval_safe.md)
+evaluates an expression in a forked child and returns its value. Errors
+come back with their class; output is forwarded as it arrives; `timeout`
+is a wall-clock limit that holds even inside C code.
+
+``` r
+
+library(landlock)
+
+set.seed(1)
+eval_safe(mean(rnorm(1e6)))
+#> [1] 4.690776e-05
+
+tryCatch(eval_safe(stop("not here")), error = conditionMessage)
+#> [1] "not here"
+
+eval_safe(Sys.sleep(60), timeout = 2)
+#> Error: timeout reached (2 sec)
+```
+
+Without a policy nothing is confined: this is `unix::eval_safe()`. A
+policy adds the kernel layers:
+
+``` r
+
+eval_safe(tryCatch(readLines("/etc/hostname"), warning = conditionMessage),
+          policy = preset("numeric"))
+#> [1] "cannot open file '/etc/hostname': Permission denied"
+```
+
+A denied file access surfaces in R as a warning (“Permission denied”)
+followed by an error (“cannot open the connection”). Warnings raised in
+the child are not replayed in the session, as with `unix`, so catch them
+inside the expression when you need the reason.
+
+## Policies
+
+A policy is a list you build with verbs:
+
+``` r
+
+p <- policy() |>
+  fs(read = c(R.home(), .libPaths(), "/usr"), tmp = TRUE) |>
+  net() |>
+  syscalls(deny = c(preset("dangerous"), preset("no_exec"))) |>
+  caps() |>
+  limits(memory = "2g", cpu = 60, nofile = 256)
+p
+#> <landlock policy> best effort 
+#>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/library, /usr
+#>   fs tmp    the call's own temporary directory (read and write)  
+#>   tcp       bind: none; connect: none
+#>   limits    as=2 GiB, cpu=60, nofile=256 
+#>   syscalls  deny 63 calls, action errno 
+#>   caps      keep none 
+```
+
+- [`fs()`](https://pedrobtz.github.io/landlock/reference/policy.md) puts
+  the filesystem under Landlock. Everything not listed is denied.
+  `read`, `write` and `exec` are separate rights (`write` does not imply
+  `read`); `rw` is both. A rule covers the path and everything below.
+  `tmp = TRUE` adds the call’s own scratch directory, the child’s
+  `TMPDIR`; the session’s
+  [`tempdir()`](https://rdrr.io/r/base/tempfile.html) is not granted,
+  because the session may later trust what it finds there.
+- [`net()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+  restricts TCP `bind()` and `connect()` to the listed ports;
+  [`net()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+  alone blocks both.
+- [`scope()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+  keeps signals and abstract Unix sockets inside the sandbox.
+- [`syscalls()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+  denies system calls with a seccomp filter.
+- [`caps()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+  drops capabilities and sets `no_new_privs`.
+- [`limits()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+  sets resource ceilings;
+  [`ids()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+  switches user (root only);
+  [`apparmor()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+  changes the AppArmor profile.
+
+Presets are policies to start from: `preset("numeric")` for code that
+only computes, `preset("install")` for installing a source package,
+`preset("plumber")` for serving HTTP. The system call sets
+`preset("dangerous")`, `preset("no_exec")` and `preset("no_net")` are
+for
+[`syscalls()`](https://pedrobtz.github.io/landlock/reference/policy.md).
+
+## Reports, best effort and strict mode
+
+Each layer depends on the kernel. When one is missing (an old kernel, a
+container that blocks it, macOS) it is skipped, and the report says so.
+On a kernel with Landlock ABI 3 (Linux 6.2 to 6.6):
+
+``` r
+
+eval_safe(1, policy = preset("numeric"))
+last_report()
+#> <landlock report> Landlock ABI 3 
+#>   landlock-fs     applied  ABI 3, 14 rules
+#>   landlock-net    skipped  TCP rules need Landlock ABI 4; the kernel offers 3
+#>   landlock-scope  skipped  scopes need Landlock ABI 6; the kernel offers 3
+#>   seccomp         applied  deny 76 calls (errno EPERM); not on this architecture: socketcall; clone() with namespace flags refused
+#>   caps            applied  bounding set kept (needs CAP_SETPCAP); effective, permitted, inheritable and ambient cleared
+```
+
+When a skipped layer is not acceptable, ask for strict mode and the
+evaluation fails instead:
+
+``` r
+
+eval_safe(1, policy = policy(best_effort = FALSE) |> net())
+#> Error: Landlock: the kernel lacks a requested feature (ABI 3) and strict mode is on
+```
+
+[`status()`](https://pedrobtz.github.io/landlock/reference/status.md)
+tells you in advance what this machine offers.
+
+## Running programs
+
+[`run()`](https://pedrobtz.github.io/landlock/reference/run.md) does for
+a program what
+[`eval_safe()`](https://pedrobtz.github.io/landlock/reference/eval_safe.md)
+does for R code. Under a filesystem policy the program needs `exec`
+permission on itself and on the dynamic loader, which the kernel opens
+for execution too. The presets deny `execve` outright, so build the
+policy for the program:
+
+``` r
+
+p <- policy() |>
+  fs(read = c("/usr", "/etc/ld.so.cache"), exec = c("/usr/bin", "/usr/lib"))
+res <- run("cat", "/etc/hostname", policy = p)
+res$status
+#> [1] 1
+rawToChar(res$stderr)
+#> [1] "cat: /etc/hostname: Permission denied\n"
+
+run("id", policy = preset("numeric"))
+#> Error: cannot run 'id': Operation not permitted
+```
+
+## Confining the session itself
+
+[`confine()`](https://pedrobtz.github.io/landlock/reference/apply_policy.md)
+applies a policy to the running session, irreversibly. Landlock only
+restricts the calling thread and what it starts afterwards, so
+[`confine()`](https://pedrobtz.github.io/landlock/reference/apply_policy.md)
+refuses when the session already runs other threads (a multi-threaded
+BLAS, for example) unless you pass `force = TRUE`.
+[`restrict_self()`](https://pedrobtz.github.io/landlock/reference/restrict_self.md),
+[`seccomp_deny()`](https://pedrobtz.github.io/landlock/reference/seccomp_deny.md),
+[`caps_drop_all()`](https://pedrobtz.github.io/landlock/reference/caps_drop_all.md)
+and
+[`no_new_privs()`](https://pedrobtz.github.io/landlock/reference/caps_drop_all.md)
+are the thin, single-layer versions.
+
+## Values from confined code
+
+Under a policy the package treats the child as hostile: it never
+evaluates what the child sends back. The value you get is still the
+child’s data, and R values can carry code (closures, environments with
+active bindings that run when read). From code you do not trust, return
+plain data such as vectors, lists and data frames.
+
+## Moving from unix
+
+landlock exports every function of `unix` 1.6.0 with the same arguments,
+in the same order, with the same defaults. Replace
+[`library(unix)`](https://jeroen.r-universe.dev/unix) or `unix::` with
+[`library(landlock)`](https://pedrobtz.github.io/landlock/) or
+`landlock::`; nothing changes until you pass a `policy`. The
+differences:
+
+- [`eval_safe()`](https://pedrobtz.github.io/landlock/reference/eval_safe.md)
+  has a trailing `policy` argument, and records a report for
+  [`last_report()`](https://pedrobtz.github.io/landlock/reference/last_report.md).
+- `unix` switches [`tempdir()`](https://rdrr.io/r/base/tempfile.html)
+  and [`interactive()`](https://rdrr.io/r/base/interactive.html) in the
+  child by writing to R internals, which a package on CRAN may not do.
+  Here `tmp` becomes the child’s `TMPDIR` environment variable;
+  [`tempdir()`](https://rdrr.io/r/base/tempfile.html) and
+  [`interactive()`](https://rdrr.io/r/base/interactive.html) keep the
+  session’s values, and standard input is `/dev/null`.
+- `eval_safe(profile =)` changes the AppArmor profile through `/proc`,
+  so it works without the ‘RAppArmor’ package or ‘libapparmor’.
+- `uid` without `gid` switches to the user’s primary group and drops the
+  caller’s supplementary groups; `unix` keeps them.
+- The default `tmp` is removed after the call.
+- [`status()`](https://pedrobtz.github.io/landlock/reference/status.md),
+  [`policy()`](https://pedrobtz.github.io/landlock/reference/policy.md),
+  [`run()`](https://pedrobtz.github.io/landlock/reference/run.md) and
+  the confinement layers are new.
