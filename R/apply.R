@@ -122,19 +122,40 @@ apply_policy <- function(p, strict = !isTRUE(p$best_effort)) {
   }
 
   # Resource limits (step 12): ceilings, never raised above the hard limit.
+  # A limit the platform does not have, or refuses (macOS rejects an
+  # address-space limit), is skipped and named in the report; in strict mode
+  # it is an error.
   if (length(p$limits)) {
     shown <- character()
+    refused <- character()
     for (name in names(p$limits)) {
-      cur <- .Call(C_rlimit_get, name)
-      if (anyNA(cur)) next
       want <- p$limits[[name]]
       if (!is.numeric(want) || length(want) != 1L || is.na(want) || want < 0)
         stop("limits(): invalid value for ", name, call. = FALSE)
-      v <- min(want, cur[[2]])
-      .Call(C_rlimit_set, name, v, v)
-      shown <- c(shown, paste0(name, "=", if (is.finite(v)) format(v, scientific = FALSE) else "unlimited"))
+      cur <- .Call(C_rlimit_get, name)
+      why <- NULL
+      if (anyNA(cur)) {
+        why <- "not available on this system"
+      } else {
+        v <- min(want, cur[[2]])
+        why <- tryCatch({
+          .Call(C_rlimit_set, name, v, v)
+          NULL
+        }, error = function(e) sub("^setrlimit\\(\\): ", "", conditionMessage(e)))
+      }
+      if (is.null(why)) {
+        shown <- c(shown, paste0(name, "=", if (is.finite(v)) format(v, scientific = FALSE) else "unlimited"))
+      } else if (strict) {
+        stop("limits(): cannot set ", name, ": ", why, call. = FALSE)
+      } else {
+        refused <- c(refused, paste0(name, " (", why, ")"))
+      }
     }
-    add("limits", "applied", paste(shown, collapse = ", "))
+    if (length(shown))
+      add("limits", "applied", paste(c(shown, if (length(refused)) paste("not set:", paste(refused, collapse = ", "))),
+                                     collapse = ", "))
+    else
+      add("limits", "skipped", paste("not set:", paste(refused, collapse = ", ")))
   }
 
   report <- if (length(rows)) do.call(rbind, rows)

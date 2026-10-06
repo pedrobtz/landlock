@@ -39,4 +39,5 @@ articles:
   navbar: ~
   contents:
   - landlock
+  - articles/examples
   - layers

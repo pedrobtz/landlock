@@ -81,3 +81,18 @@ test_that("inherited descriptors stay open without a policy", {
   on.exit(.Call(C_test_close_fd, fd))
   expect_gt(eval_fork(.Call(C_test_read_fd, fd)), 0L)
 })
+
+test_that("a limit the platform refuses is reported, or an error in strict mode", {
+  # macOS rejects an address-space limit; Linux accepts it.
+  res <- eval_safe(1, policy = limits(policy(), memory = "64g", core = 0))
+  expect_identical(res, 1)
+  rep <- last_report()
+  expect_identical(rep$layer, "limits")
+  if (!is_linux()) {
+    expect_match(rep$detail, "not set: as")
+    expect_error(eval_safe(1, policy = limits(policy(best_effort = FALSE), memory = "64g")),
+                 "cannot set as")
+  } else {
+    expect_identical(rep$status, "applied")
+  }
+})
