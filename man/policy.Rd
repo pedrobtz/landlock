@@ -124,8 +124,10 @@ does.}
 
 \item{socket_families}{If not \code{NULL}, \code{socket()} may only create sockets
 of these families (any of \code{"unix"}, \code{"inet"}, \code{"inet6"}, \code{"netlink"},
-\code{"packet"}, \code{"vsock"}); others fail with \code{EAFNOSUPPORT}. On i386, where
-\code{socketcall()} hides the family, \code{socketcall()} is refused outright.}
+\code{"packet"}, \code{"vsock"}); others fail with \code{EAFNOSUPPORT}. On i386 the C
+library creates sockets through \code{socketcall()}, which hides the family
+from the filter; \code{socketcall()} is then refused outright, so no socket
+of any family can be created there.}
 
 \item{lock_personality}{If \code{TRUE}, \code{personality()} may only query or set
 the default execution domains, as in Docker's profile: no turning off

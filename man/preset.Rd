@@ -35,7 +35,8 @@ kernel opens for execution too) and writing to \code{lib}; only the
 \code{"dangerous"} calls are denied. Also no real-time scheduling.
 \item \code{"plumber"}: serve HTTP. As \code{"numeric"}, plus binding to \code{port}; the
 \code{"dangerous"} and \code{"no_exec"} calls are denied, sockets are limited to
-Unix, IPv4 and IPv6, and there is no real-time scheduling.
+Unix, IPv4 and IPv6 (which, on i386, leaves no sockets at all; see
+\code{\link[=syscalls]{syscalls()}}), and there is no real-time scheduling.
 }
 
 System call sets, character vectors for \code{\link[=syscalls]{syscalls()}} and

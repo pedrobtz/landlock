@@ -124,6 +124,7 @@ test_that("the numeric preset applies every layer it can", {
   skip_without_landlock(6L)
   expect_identical(eval_safe(sum(1:10), policy = preset("numeric")), 55L)
   rep <- last_report()
-  expect_setequal(rep$layer, c("landlock-fs", "landlock-net", "landlock-scope", "seccomp", "caps"))
+  expect_setequal(rep$layer, c("landlock-fs", "landlock-net", "landlock-scope", "seccomp", "caps",
+                               "limits"))
   expect_true(all(rep$status == "applied"))
 })

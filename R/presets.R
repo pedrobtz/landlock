@@ -18,7 +18,8 @@
 #'   `"dangerous"` calls are denied. Also no real-time scheduling.
 #' * `"plumber"`: serve HTTP. As `"numeric"`, plus binding to `port`; the
 #'   `"dangerous"` and `"no_exec"` calls are denied, sockets are limited to
-#'   Unix, IPv4 and IPv6, and there is no real-time scheduling.
+#'   Unix, IPv4 and IPv6 (which, on i386, leaves no sockets at all; see
+#'   [syscalls()]), and there is no real-time scheduling.
 #'
 #' System call sets, character vectors for [syscalls()] and
 #' [seccomp_deny()]:

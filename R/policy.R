@@ -243,8 +243,10 @@ apparmor <- function(p, profile) {
 #'   does.
 #' @param socket_families If not `NULL`, `socket()` may only create sockets
 #'   of these families (any of `"unix"`, `"inet"`, `"inet6"`, `"netlink"`,
-#'   `"packet"`, `"vsock"`); others fail with `EAFNOSUPPORT`. On i386, where
-#'   `socketcall()` hides the family, `socketcall()` is refused outright.
+#'   `"packet"`, `"vsock"`); others fail with `EAFNOSUPPORT`. On i386 the C
+#'   library creates sockets through `socketcall()`, which hides the family
+#'   from the filter; `socketcall()` is then refused outright, so no socket
+#'   of any family can be created there.
 #' @param lock_personality If `TRUE`, `personality()` may only query or set
 #'   the default execution domains, as in Docker's profile: no turning off
 #'   address-space randomization.

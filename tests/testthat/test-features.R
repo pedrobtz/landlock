@@ -77,11 +77,20 @@ test_that("terminal injection ioctls are refused", {
 
 test_that("socket families can be limited", {
   skip_if_not(is_linux())
-  p <- syscalls(policy(), socket_families = "unix")
-  expect_identical(eval_safe(.Call(C_test_socket, .Call(C_af_value, "unix")), policy = p), 0L)
-  expect_identical(eval_safe(.Call(C_test_socket, .Call(C_af_value, "inet")), policy = p),
-                   -.Call(C_errno_value, "EAFNOSUPPORT"))
   expect_error(syscalls(policy(), socket_families = "carrier-pigeon"))
+  p <- syscalls(policy(), socket_families = "unix")
+  unix <- .Call(C_af_value, "unix")
+  inet <- .Call(C_af_value, "inet")
+  if (.Call(C_sc_lookup, "socketcall") >= 0L) {
+    # i386: the C library goes through socketcall(), which hides the family
+    # from the filter, so every socket is refused (the safe direction).
+    expect_lt(eval_safe(.Call(C_test_socket, unix), policy = p), 0L)
+    expect_lt(eval_safe(.Call(C_test_socket, inet), policy = p), 0L)
+  } else {
+    expect_identical(eval_safe(.Call(C_test_socket, unix), policy = p), 0L)
+    expect_identical(eval_safe(.Call(C_test_socket, inet), policy = p),
+                     -.Call(C_errno_value, "EAFNOSUPPORT"))
+  }
 })
 
 test_that("personality can be locked instead of denied", {
