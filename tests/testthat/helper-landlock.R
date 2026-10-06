@@ -6,6 +6,14 @@ under_gctorture <- function() {
   step > 0
 }
 
+# Valgrind emulates setrlimit(RLIMIT_NOFILE) and refuses to change the hard
+# limit (it reserves descriptors for itself), so tests that lower nofile
+# cannot run under it.
+under_valgrind <- function() {
+  maps <- "/proc/self/maps"
+  file.exists(maps) && any(grepl("vgpreload", readLines(maps, warn = FALSE), fixed = TRUE))
+}
+
 landlock_abi <- function() .Call(C_ll_abi)
 
 skip_without_landlock <- function(abi = 1L) {

@@ -36,6 +36,7 @@ test_that("output goes to files and can be discarded", {
 })
 
 test_that("limits apply and are ceilings", {
+  skip_if(under_valgrind(), "valgrind refuses to change RLIMIT_NOFILE")
   expect_identical(eval_safe(rlimit_nofile()$cur, policy = limits(policy(), nofile = 100)), 100)
   rep <- last_report()
   expect_s3_class(rep, "lk_report")
@@ -68,6 +69,7 @@ test_that("confine() refuses a multi-threaded session", {
 })
 
 test_that("confine() and apply_policy() work in a child", {
+  skip_if(under_valgrind(), "valgrind refuses to change RLIMIT_NOFILE")
   expect_identical(eval_fork({
     confine(limits(policy(), nofile = 99))
     rlimit_nofile()$cur

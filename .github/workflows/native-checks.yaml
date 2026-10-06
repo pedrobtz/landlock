@@ -30,6 +30,14 @@ jobs:
   valgrind:
     uses: pedrobtz/r-actions/.github/workflows/valgrind.yml@v1
     with:
+      # The defaults plus --errors-for-leak-kinds=definite. Every forked child
+      # ends by raise(SIGKILL) without freeing (design section 5.6), so its
+      # heap is full of "possibly lost" blocks (setenv's environ copies, R's
+      # own allocations) that valgrind otherwise counts as errors. Definite
+      # leaks, invalid accesses and uninitialised reads still fail the job,
+      # in the session and in every child: the children stay instrumented
+      # because the package's own C runs there.
+      valgrind-opts: "--leak-check=full --track-origins=yes --num-callers=30 --errors-for-leak-kinds=definite"
       profile: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci') && 'quick' || 'full' }}
 
   lto:
