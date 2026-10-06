@@ -4,23 +4,30 @@
 \name{landlock-package}
 \alias{landlock}
 \alias{landlock-package}
-\title{landlock: What the Package Does (One Line, Title Case)}
+\title{landlock: Process Confinement with 'Landlock', 'seccomp' and Capabilities}
 \description{
-What the package does (one paragraph).
+Evaluate R expressions or run programs in a kernel-enforced sandbox. Builds on 'Landlock' \url{https://landlock.io/} (filesystem and TCP rules), 'seccomp-bpf' (system call filters), capability dropping and resource limits, without external libraries. Degrades gracefully with a report when a feature is unavailable. A drop-in replacement for the 'unix' package: every function it exports is provided with the same name and arguments.
 }
 \seealso{
 Useful links:
 \itemize{
   \item \url{https://pedrobtz.github.io/landlock/}
+  \item \url{https://github.com/pedrobtz/landlock}
+  \item Report bugs at \url{https://github.com/pedrobtz/landlock/issues}
 }
 
 }
 \author{
-\strong{Maintainer}: First Last \email{first.last@example.com}
+\strong{Maintainer}: Pedro Z \email{pedrobtz@gmail.com}
 
 Authors:
 \itemize{
-  \item First Last \email{first.last@example.com}
+  \item Pedro Z \email{pedrobtz@gmail.com}
+}
+
+Other contributors:
+\itemize{
+  \item Jeroen Ooms (Author of the 'unix' package test suite ported in tests/testthat) [copyright holder]
 }
 
 }

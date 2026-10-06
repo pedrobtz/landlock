@@ -3,6 +3,7 @@
 
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/pedrobtz/landlock/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/pedrobtz/landlock/actions/workflows/R-CMD-check.yaml)
+[![native-checks](https://github.com/pedrobtz/landlock/actions/workflows/native-checks.yaml/badge.svg)](https://github.com/pedrobtz/landlock/actions/workflows/native-checks.yaml)
 [![coverage](https://raw.githubusercontent.com/pedrobtz/landlock/main/.github/badges/coverage.svg)](https://github.com/pedrobtz/landlock/actions/workflows/coverage.yaml)
 <!-- badges: end -->
 

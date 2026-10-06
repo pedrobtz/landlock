@@ -53,7 +53,8 @@ jobs:
         run: make -C tests/c && tests/c/run
       - name: Run as nobody
         if: steps.have.outputs.present == 'true'
-        run: sudo -u nobody tests/c/run
+        # nobody cannot traverse the runner's home directory; run a copy.
+        run: cp tests/c/run /tmp/lk-run && sudo -u nobody /tmp/lk-run
 
   container:
     runs-on: ubuntu-24.04

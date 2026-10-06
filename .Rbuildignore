@@ -1,6 +1,10 @@
 ^LICENSE\.md$
+^LICENSE\.note$
 ^\.github$
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
 ^\.agents$
+^tests/c$
+^cran-comments\.md$
+^CRAN-SUBMISSION$
