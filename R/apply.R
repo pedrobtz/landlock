@@ -54,6 +54,7 @@ apply_policy <- function(p, strict = !isTRUE(p$best_effort)) {
     r <- .Call(C_ll_restrict, rules$path, rules$mode,
                p$net$bind %||% integer(), p$net$connect %||% integer(), as.integer(flags))
     used <- r[[1]]
+    abi <- used  # the report header shows the ABI the rules were written for
     none <- if (used == 0L) "Landlock is not available on this kernel" else NULL
     if (want_fs)
       add("landlock-fs", if (r[[2]]) "applied" else "skipped",
