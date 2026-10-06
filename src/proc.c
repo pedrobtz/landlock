@@ -141,7 +141,19 @@ int lk_fd_hygiene(int lowfd, const int *keep, size_t nkeep)
             continue;
         if (fcntl(fd, F_GETFD) == -1)
             continue;  /* not open */
-        if (lk_dup2(null_fd, fd) != 0 || fcntl(fd, F_SETFD, FD_CLOEXEC) != 0) {
+        if (lk_dup2(null_fd, fd) == 0) {
+            if (fcntl(fd, F_SETFD, FD_CLOEXEC) != 0) {
+                rc = -errno;
+                break;
+            }
+            continue;
+        }
+        /* dup2() refuses a number at or above the soft RLIMIT_NOFILE, which
+         * an fd opened before the limit was lowered can have. Close it
+         * instead: above the limit, open() can never reuse the number. If
+         * close() fails with EBADF too, the fd is not this process's to use
+         * (valgrind keeps its own there), so there is nothing to protect. */
+        if (close(fd) != 0 && errno != EBADF) {
             rc = -errno;
             break;
         }

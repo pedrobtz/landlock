@@ -149,6 +149,24 @@ LK_TEST(hygiene_replaces_with_devnull)
     PASS();
 }
 
+LK_TEST(hygiene_above_the_limit)
+{
+    /* An fd opened before RLIMIT_NOFILE was lowered below its number. */
+    int fd = open("/dev/null", O_RDONLY);
+    CHECK(fd >= 0, "open");
+    int high = 200;
+    CHECK(dup2(fd, high) == high, "dup2 to %d", high);
+    close(fd);
+    int res = lk_rlimit_lookup("nofile");
+    uint64_t soft, hard;
+    CHECK(lk_rlimit_get(res, &soft, &hard) == 0, "get");
+    CHECK(lk_rlimit_set(res, 64, hard) == 0, "lower the soft limit");
+    int rc = lk_fd_hygiene(3, NULL, 0);
+    CHECK(rc == 0, "hygiene: %s", strerror(-rc));
+    CHECK(fcntl(high, F_GETFD) == -1 && errno == EBADF, "fd %d above the limit left open", high);
+    PASS();
+}
+
 LK_TEST(pipe_is_cloexec)
 {
     int fds[2];
@@ -179,6 +197,7 @@ LK_SUITE(suite_proc) = {
     { "one_mebibyte_no_deadlock", one_mebibyte_no_deadlock },
     { "timeout_kill", timeout_kill },
     { "hygiene_replaces_with_devnull", hygiene_replaces_with_devnull },
+    { "hygiene_above_the_limit", hygiene_above_the_limit },
     { "pipe_is_cloexec", pipe_is_cloexec },
     { "devnull_stdin", devnull_stdin },
     { "userns_probe", userns_probe },
