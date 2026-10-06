@@ -33,7 +33,13 @@ test_that("the kill action kills the child", {
 test_that("no_exec stops system()", {
   skip_if_not(is_linux())
   p <- syscalls(policy(), deny = preset("no_exec"))
-  expect_error(eval_safe(system("true", intern = TRUE), policy = p))
+  # The command must not run. How the refused execve surfaces depends on how
+  # the C library spawns: an error when posix_spawn reports it (glibc), a
+  # warning about exit status 127 when it is fork then exec (valgrind).
+  outcome <- eval_safe(tryCatch(system("true", intern = TRUE),
+                                error = function(e) "refused", warning = function(w) "refused"),
+                       policy = p)
+  expect_identical(outcome, "refused")
   expect_identical(eval_safe(sum(1:4), policy = p), 10L)
 })
 
@@ -97,6 +103,8 @@ test_that("caps() empties the bounding set when privileged", {
 })
 
 test_that("root can still switch user after caps() and seccomp", {
+  # Also covers a child that cannot read the package library once it is
+  # nobody: everything it runs afterwards must already be in memory.
   skip_if_not(is_linux())
   skip_if_not(getuid() == 0L, "needs root")
   p <- ids(caps(syscalls(policy(), deny = preset("dangerous"))), uid = 65534, gid = 65534)

@@ -236,6 +236,7 @@ fork_call <- function(child, tmp, timeout, std_out, std_err, close_fds,
     if (!dir.exists(tmp)) dir.create(tmp, recursive = TRUE)
     tmp <- normalizePath(tmp)
   }
+  load_namespace()
   wrapped <- function() {
     child_prepare(tmp, capture_r_output)
     on.exit(child_flush())
@@ -294,6 +295,21 @@ child_died_message <- function(res) {
   if (!is.na(res$exit_code))
     return(sprintf("child process has died before returning a result (exit status %d)", res$exit_code))
   "child process has died before returning a result"
+}
+
+# Package functions are lazy-loaded: the first use reads the installed
+# .rdb. After a policy is applied the child may no longer be able to read it
+# (Landlock rules that do not list the library, or a switch to another user
+# who cannot enter the installing user's directories), so a function first
+# used then, by apply_policy()'s later steps or by on.exit(), would fail and
+# kill the child. Loading the whole namespace in the session once, before the
+# first fork, means children only ever use what they inherited in memory.
+load_namespace <- function() {
+  if (isTRUE(.state$namespace_loaded)) return(invisible())
+  ns <- asNamespace("landlock")
+  for (name in ls(ns, all.names = TRUE)) get(name, envir = ns, inherits = FALSE)
+  .state$namespace_loaded <- TRUE
+  invisible()
 }
 
 # In the forked child, before any user code.
