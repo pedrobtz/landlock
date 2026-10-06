@@ -83,7 +83,7 @@ test_that("inherited descriptors stay open without a policy", {
 })
 
 test_that("a limit the platform refuses is reported, or an error in strict mode", {
-  skip_if(under_asan(), "an address-space limit breaks AddressSanitizer")
+  skip_if(under_asan(), "an address-space limit breaks ASan, which reserves terabytes")
   # macOS rejects an address-space limit; Linux accepts it.
   res <- eval_safe(1, policy = limits(policy(), memory = "64g", core = 0))
   expect_identical(res, 1)
