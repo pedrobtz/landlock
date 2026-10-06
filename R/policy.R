@@ -232,7 +232,7 @@ apparmor <- function(p, profile) {
 #'   `socketcall()` hides the family, `socketcall()` is refused outright.
 #' @param lock_personality If `TRUE`, `personality()` may only query or set
 #'   the default execution domains, as in Docker's profile: no turning off
-#'   address-space randomisation.
+#'   address-space randomization.
 #' @export
 syscalls <- function(p, deny = character(), action = c("errno", "kill", "log", "trap"),
                      errno = "EPERM", block_tty = FALSE, socket_families = NULL,

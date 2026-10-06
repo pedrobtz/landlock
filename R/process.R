@@ -30,8 +30,10 @@
 #'
 #' # Changing the process is irreversible, so shown in throwaway children:
 #' eval_fork(setpriority(getpriority() + 1))
-#' eval_fork(setpgid())
 #' eval_fork(getppid()) == getpid()
+#'
+#' # A child of eval_fork() leads a session and process group of its own
+#' eval_fork(getpgid() == getpid())
 NULL
 
 #' @rdname process

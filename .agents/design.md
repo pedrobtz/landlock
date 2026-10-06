@@ -329,6 +329,14 @@ back to `prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog)`.
 TSYNC matters for `confine()`: without it only the calling thread is filtered.
 TSYNC also propagates `no_new_privs` to the other threads.
 
+Argument rules (`struct lk_sc_rule`: `arg`, `negate`, `vals`) compare the low
+32 bits of one argument against a set (+4 within the slot on big-endian). The
+R layer uses them for three canned rules only, not a general language:
+`block_tty` (ioctl TIOCSTI/TIOCLINUX, EPERM, as Flatpak), `socket_families`
+(socket() outside the set, EAFNOSUPPORT, as systemd RestrictAddressFamilies;
+socketcall refused outright where it exists), `lock_personality` (Docker's
+values). They come before the plain deny list in the filter.
+
 Deny-list, not allow-list, for v1: R's syscall footprint is wide and varies with
 BLAS and packages. Presets:
 
@@ -546,7 +554,10 @@ the package's own exports, documented and tested as such (§15), living in
 ```
 parent:  three close-on-exec pipes: result, stdout, stderr; fflush(NULL)
          pid <- fork()
-child:   setpgid(0, 0); stdin <- /dev/null; dup2 the pipes onto 1 and 2
+child:   setsid() (own session, no controlling terminal: no TIOCSTI into the user's tty);
+         PR_SET_PDEATHSIG(SIGKILL) and getppid() check (dies with the session, which
+         enforces the timeout; armed again after setids); stdin <- /dev/null or the
+         stdin file; dup2 the pipes onto 1 and 2
          if a policy is given: lk_fd_hygiene(3, keep = result fd)      # step 0 of section 4
          R_UnwindProtect(body, cleanup):
            body:    child_prepare(): q() guard, TMPDIR <- tmp, sink() to /dev/fd/1 and /dev/fd/2
@@ -624,6 +635,8 @@ Notes
 | `cgroup.delegated` | can `mkdir` under own cgroup dir and `cgroup.subtree_control` is writable |
 | `apparmor` | `/sys/module/apparmor/parameters/enabled` == "Y"; current profile from `/proc/self/attr/apparmor/current` |
 | `kernel` | `uname -r` |
+| `landlock_errata` | `landlock_create_ruleset(NULL, 0, ERRATA)` (Linux 6.15) |
+| `tiocsti_legacy` | `/proc/sys/dev/tty/legacy_tiocsti` |
 
 ---
 

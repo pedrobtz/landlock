@@ -123,7 +123,7 @@ of these families (any of \code{"unix"}, \code{"inet"}, \code{"inet6"}, \code{"n
 
 \item{lock_personality}{If \code{TRUE}, \code{personality()} may only query or set
 the default execution domains, as in Docker's profile: no turning off
-address-space randomisation.}
+address-space randomization.}
 
 \item{keep}{Capability names to keep; see \code{\link[=caps_keep]{caps_keep()}}.}
 }

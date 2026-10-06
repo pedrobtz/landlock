@@ -41,6 +41,16 @@ trusted, as in `unix`.
   that can write a shared library to a writable directory can load it. The
   seccomp layer still applies to it; presets deny `execve` where possible.
 
+## Hardening added after the review (parity with other sandboxes)
+
+- Every child runs in a session of its own, so it has no controlling
+  terminal and cannot use `TIOCSTI` on the user's terminal (CVE-2017-5226,
+  the reason for bwrap `--new-session`); the presets also refuse the
+  `TIOCSTI` and `TIOCLINUX` ioctls (CVE-2023-28100, Flatpak).
+- Every child dies with the session (`PR_SET_PDEATHSIG`), so killing R does
+  not leave a confined child running without the timeout the session
+  enforces; armed again after a user switch, which clears it.
+
 ## Checked and found sound
 
 Landlock rights per ABI and the ruleset size per ABI; file-rule masking;
