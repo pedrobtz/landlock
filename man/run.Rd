@@ -19,9 +19,11 @@ run(
 
 \item{args}{Character vector of arguments.}
 
-\item{policy}{A \code{\link[=policy]{policy()}}, or \code{NULL} for none. The program needs
-permission to execute itself and to read its shared libraries; see
-\code{\link[=preset]{preset()}}.}
+\item{policy}{A \code{\link[=policy]{policy()}}, or \code{NULL} for none. Under a Landlock
+filesystem policy the program needs \code{exec} permission on itself and on
+the dynamic loader (\code{ld-linux*.so}, under \verb{/lib}, \verb{/lib64} or
+\verb{/usr/lib}), which the kernel opens for execution as well, and \code{read}
+permission on its shared libraries; see \code{\link[=preset]{preset()}}.}
 
 \item{timeout}{Wall-clock limit in seconds; \code{0} for none.}
 

@@ -108,9 +108,11 @@ eval_fork <- function(expr, tmp = tempfile("fork"), std_out = stdout(), std_err 
 #'
 #' @param cmd Program to run.
 #' @param args Character vector of arguments.
-#' @param policy A [policy()], or `NULL` for none. The program needs
-#'   permission to execute itself and to read its shared libraries; see
-#'   [preset()].
+#' @param policy A [policy()], or `NULL` for none. Under a Landlock
+#'   filesystem policy the program needs `exec` permission on itself and on
+#'   the dynamic loader (`ld-linux*.so`, under `/lib`, `/lib64` or
+#'   `/usr/lib`), which the kernel opens for execution as well, and `read`
+#'   permission on its shared libraries; see [preset()].
 #' @param timeout Wall-clock limit in seconds; `0` for none.
 #' @param std_out,std_err `TRUE` to capture the output in the result, `FALSE`
 #'   or `NULL` to discard it, or a file name, connection or function as in

@@ -5,11 +5,12 @@
 #' add to it with the [policy()] verbs.
 #'
 #' * `"numeric"`: evaluate R code that only computes. Reads R, the
-#'   installed packages and system libraries; writes only the session's
-#'   temporary directory; may execute nothing; no TCP; signals and abstract
+#'   installed packages and system libraries; reads and writes only the
+#'   session's temporary directory; may execute nothing; no TCP; signals and abstract
 #'   sockets scoped to the sandbox.
 #' * `"install"`: install a package from source. As `"numeric"`, plus
-#'   executing the compiler toolchain and writing to `lib`.
+#'   executing the compiler toolchain (and the dynamic loader, which the
+#'   kernel opens for execution too) and writing to `lib`.
 #' * `"plumber"`: serve HTTP. As `"numeric"`, plus binding to `port`.
 #'
 #' Paths that do not exist on this system are left out.
@@ -40,7 +41,9 @@ r_read_paths <- function() {
 }
 
 preset_numeric <- function() {
-  p <- fs(policy(), read = r_read_paths(), write = existing(c(tempdir(), "/dev/null")))
+  # rw, not write: a scratch directory is useless if what was written there
+  # cannot be read back (write does not imply read).
+  p <- fs(policy(), read = r_read_paths(), rw = existing(c(tempdir(), "/dev/null")))
   p <- net(p)
   scope(p)
 }
@@ -49,8 +52,8 @@ preset_install <- function(lib = .libPaths()[1]) {
   stopifnot(is.character(lib), length(lib) == 1L)
   p <- preset_numeric()
   fs(p, read = existing(c("/etc", "/bin", "/sbin")),
-     exec = existing(c(R.home(), "/usr/bin", "/bin", "/usr/lib", "/usr/libexec",
-                       "/usr/local/bin", "/opt/R")),
+     exec = existing(c(R.home(), "/usr/bin", "/bin", "/usr/lib", "/usr/lib64", "/lib",
+                       "/lib64", "/usr/libexec", "/usr/local/bin", "/opt/R")),
      write = lib)
 }
 

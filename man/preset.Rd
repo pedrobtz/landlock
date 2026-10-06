@@ -23,11 +23,12 @@ add to it with the \code{\link[=policy]{policy()}} verbs.
 \details{
 \itemize{
 \item \code{"numeric"}: evaluate R code that only computes. Reads R, the
-installed packages and system libraries; writes only the session's
-temporary directory; may execute nothing; no TCP; signals and abstract
+installed packages and system libraries; reads and writes only the
+session's temporary directory; may execute nothing; no TCP; signals and abstract
 sockets scoped to the sandbox.
 \item \code{"install"}: install a package from source. As \code{"numeric"}, plus
-executing the compiler toolchain and writing to \code{lib}.
+executing the compiler toolchain (and the dynamic loader, which the
+kernel opens for execution too) and writing to \code{lib}.
 \item \code{"plumber"}: serve HTTP. As \code{"numeric"}, plus binding to \code{port}.
 }
 

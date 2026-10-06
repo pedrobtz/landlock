@@ -24,6 +24,12 @@ test_that("writes are confined to the allowed hierarchy", {
   expect_false(file.exists(outside))
 })
 
+test_that("execution needs the loader too", {
+  skip_without_landlock()
+  p <- fs(preset("numeric"), exec = c("/usr/bin", "/bin")[file.exists(c("/usr/bin", "/bin"))])
+  expect_error(run("true", policy = p), "Permission denied")
+})
+
 test_that("nothing can be executed under the numeric preset", {
   skip_without_landlock()
   expect_error(eval_safe(system("true", intern = TRUE), policy = preset("numeric")))
@@ -32,7 +38,9 @@ test_that("nothing can be executed under the numeric preset", {
 
 test_that("run() works when execution is allowed", {
   skip_without_landlock()
-  p <- fs(preset("numeric"), exec = c("/usr/bin", "/bin")[file.exists(c("/usr/bin", "/bin"))])
+  # The kernel opens the dynamic loader for execution too.
+  dirs <- c("/usr/bin", "/bin", "/usr/lib", "/usr/lib64", "/lib", "/lib64")
+  p <- fs(preset("numeric"), exec = dirs[file.exists(dirs)])
   f <- tempfile()
   writeLines("inside", f)
   expect_identical(rawToChar(run("cat", f, policy = p)$stdout), "inside\n")
