@@ -20,7 +20,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">landlock</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -168,8 +168,8 @@ write the output, and nothing else of the user’s.</p>
 <span>  <span class="fu"><a href="../reference/policy.html">limits</a></span><span class="op">(</span>memory <span class="op">=</span> <span class="st">"4g"</span>, cpu <span class="op">=</span> <span class="fl">30</span><span class="op">)</span></span>
 <span><span class="va">task_policy</span></span>
 <span><span class="co">#&gt; &lt;landlock policy&gt; best effort </span></span>
-<span><span class="co">#&gt;   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /tmp/RtmpEjCM2M/input</span></span>
-<span><span class="co">#&gt;   fs write  /tmp/RtmpEjCM2M/output</span></span>
+<span><span class="co">#&gt;   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /tmp/RtmplnBN0E/input</span></span>
+<span><span class="co">#&gt;   fs write  /tmp/RtmplnBN0E/output</span></span>
 <span><span class="co">#&gt;   tcp       bind: none; connect: none</span></span>
 <span><span class="co">#&gt;   limits    as=4 GiB, cpu=30 </span></span>
 <span><span class="co">#&gt;   syscalls  deny 77 calls, action errno </span></span>
@@ -201,7 +201,7 @@ directory, or reading the output it just wrote, is refused:
 <span><span class="co">#&gt; [1] TRUE</span></span>
 <span><span class="fu"><a href="../reference/eval_safe.html">eval_safe</a></span><span class="op">(</span><span class="kw"><a href="https://rdrr.io/r/base/conditions.html" class="external-link">tryCatch</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/readLines.html" class="external-link">readLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">output</span>, <span class="st">"summary.csv"</span><span class="op">)</span><span class="op">)</span>, warning <span class="op">=</span> <span class="va">conditionMessage</span><span class="op">)</span>,</span>
 <span>          policy <span class="op">=</span> <span class="va">task_policy</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "cannot open file '/tmp/RtmpEjCM2M/output/summary.csv': Permission denied"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "cannot open file '/tmp/RtmplnBN0E/output/summary.csv': Permission denied"</span></span></code></pre></div>
 <p><code><a href="https://rdrr.io/r/base/files.html" class="external-link">file.exists()</a></code> still answers: Landlock governs opening
 files, not looking at their metadata.</p>
 </div>

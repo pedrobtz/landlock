@@ -140,8 +140,8 @@ task_policy <- policy() |>
   limits(memory = "4g", cpu = 30)
 task_policy
 #> <landlock policy> best effort 
-#>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /tmp/RtmpEjCM2M/input
-#>   fs write  /tmp/RtmpEjCM2M/output
+#>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /tmp/RtmplnBN0E/input
+#>   fs write  /tmp/RtmplnBN0E/output
 #>   tcp       bind: none; connect: none
 #>   limits    as=4 GiB, cpu=30 
 #>   syscalls  deny 77 calls, action errno 
@@ -180,7 +180,7 @@ eval_safe(file.exists(file.path(output, "summary.csv")), policy = task_policy)
 #> [1] TRUE
 eval_safe(tryCatch(readLines(file.path(output, "summary.csv")), warning = conditionMessage),
           policy = task_policy)
-#> [1] "cannot open file '/tmp/RtmpEjCM2M/output/summary.csv': Permission denied"
+#> [1] "cannot open file '/tmp/RtmplnBN0E/output/summary.csv': Permission denied"
 ```
 
 [`file.exists()`](https://rdrr.io/r/base/files.html) still answers:

@@ -94,7 +94,7 @@ priority (raise the value).
 getuid()
 #> [1] 1001
 getpid()
-#> [1] 6628
+#> [1] 6462
 getpriority()
 #> [1] 0
 
@@ -102,7 +102,7 @@ getpriority()
 eval_fork(setpriority(getpriority() + 1))
 #> [1] 1
 eval_fork(setpgid())
-#> [1] 6970
+#> [1] 6804
 eval_fork(getppid()) == getpid()
 #> [1] TRUE
 ```
