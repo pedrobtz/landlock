@@ -37,6 +37,10 @@
 #' @param timeout Wall-clock limit in seconds; `0` for none.
 #' @param priority Scheduling priority of the child; see [setpriority()].
 #' @param uid,gid User and group to switch to (root only), as ids or names.
+#'   After the switch the child can only read what that user can read,
+#'   including the R libraries it lazy-loads code from: landlock's own
+#'   functions are loaded beforehand, but functions of other packages used for
+#'   the first time in the child must be readable by that user.
 #' @param rlimits Named vector or list of resource limits, as in 'unix', for
 #'   example `c(cpu = 60, fsize = 1e6)`. Each sets both the soft and the hard
 #'   limit; zero and `NA` are ignored.
@@ -308,6 +312,11 @@ load_namespace <- function() {
   if (isTRUE(.state$namespace_loaded)) return(invisible())
   ns <- asNamespace("landlock")
   for (name in ls(ns, all.names = TRUE)) get(name, envir = ns, inherits = FALSE)
+  # The attached exports may hold promises of their own.
+  if ("package:landlock" %in% search()) {
+    pkg <- as.environment("package:landlock")
+    for (name in ls(pkg, all.names = TRUE)) get(name, envir = pkg, inherits = FALSE)
+  }
   .state$namespace_loaded <- TRUE
   invisible()
 }

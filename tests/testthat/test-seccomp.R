@@ -108,7 +108,11 @@ test_that("root can still switch user after caps() and seccomp", {
   skip_if_not(is_linux())
   skip_if_not(getuid() == 0L, "needs root")
   p <- ids(caps(syscalls(policy(), deny = preset("dangerous"))), uid = 65534, gid = 65534)
-  expect_identical(eval_safe(c(getuid(), geteuid(), getgid()), policy = p), rep(65534L, 3))
+  # Under R CMD check the package is installed in root's 0700 temporary
+  # directory, which nobody cannot read: load what the child will use first.
+  ids_now <- function() c(getuid(), geteuid(), getgid())
+  ids_now()
+  expect_identical(eval_safe(ids_now(), policy = p), rep(65534L, 3))
 })
 
 test_that("caps() validates names", {

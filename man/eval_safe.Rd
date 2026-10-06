@@ -39,7 +39,11 @@ eval_fork(
 
 \item{priority}{Scheduling priority of the child; see \code{\link[=setpriority]{setpriority()}}.}
 
-\item{uid, gid}{User and group to switch to (root only), as ids or names.}
+\item{uid, gid}{User and group to switch to (root only), as ids or names.
+After the switch the child can only read what that user can read,
+including the R libraries it lazy-loads code from: landlock's own
+functions are loaded beforehand, but functions of other packages used for
+the first time in the child must be readable by that user.}
 
 \item{rlimits}{Named vector or list of resource limits, as in 'unix', for
 example \code{c(cpu = 60, fsize = 1e6)}. Each sets both the soft and the hard
