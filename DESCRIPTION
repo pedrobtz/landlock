@@ -20,10 +20,16 @@ BugReports: https://github.com/pedrobtz/landlock/issues
 OS_type: unix
 SystemRequirements: Linux kernel >= 5.13 for Landlock; seccomp and
     capabilities need Linux; resource limits and fork work on any Unix-alike
+Depends:
+    R (>= 4.1.0)
+Imports:
+    grDevices,
+    tools
 Encoding: UTF-8
 Language: en-US
 Roxygen: list(markdown = TRUE)
 Suggests: 
+    parallel,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.1.0

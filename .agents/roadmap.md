@@ -131,7 +131,7 @@ source of truth.
 - [x] **DESCRIPTION text.** CRAN asks for software names in single quotes and
   a reference for the method: 'Landlock', 'seccomp', 'unix', and
   `<https://landlock.io/>` in Description.
-- [x] **Replacement, not superset.** The package replaces `unix`: all 31
+- [x] **Replacement, not superset.** The package replaces `unix`: all 32
   exports with identical formals are 0.1.0 scope, `unix`'s tests are ported,
   `profile=` is honoured through `/proc`. Design §1, §3, §5.5, §6.2, §13, §15
   updated; the `compat-unix.R` side file is gone.
@@ -285,41 +285,41 @@ Goal: `unix`'s ported test suite passes against `landlock`, and
 `eval_safe(readLines("/etc/passwd"), policy = preset("numeric"))` errors with
 `EACCES`.
 
-- [ ] `rglue.c`: `.Call` wrappers for every `lk_*` entry point used by R;
+- [x] `rglue.c`: `.Call` wrappers for every `lk_*` entry point used by R;
       the only file including `Rinternals.h`. `init.c` registers them.
       Test-only helpers (`C_test_getppid` for Stage 4) registered too.
-- [ ] `R/status.R`: `status()` with every field from §7 (`/proc` and sysctl
+- [x] `R/status.R`: `status()` with every field from §7 (`/proc` and sysctl
       reads in R; `userns.works` via a forked probe child).
-- [ ] `R/policy.R`: builder verbs, `lk_policy` class, validation at build
+- [x] `R/policy.R`: builder verbs, `lk_policy` class, validation at build
       time (types, enum values), path existence checked at apply time only.
       `fs(rw=)` convenience (design §17.7). `print()` shows layers and whether
       the current kernel honours each.
-- [ ] `R/apply.R`: `apply_policy(p, strict = FALSE)` applying layers in the
+- [x] `R/apply.R`: `apply_policy(p, strict = FALSE)` applying layers in the
       §4 order (steps 7, 9, 11, 12 in 0.1.0), returning an `lk_report`;
       `confine()` warns, or errors unless `force = TRUE`, when
       `/proc/self/task` has more than one entry (design §17.3: go with error).
-- [ ] The `unix` API, written against `unix` 1.6.0's formals one function at
+- [x] The `unix` API, written against `unix` 1.6.0's formals one function at
       a time: `R/limits.R` (`rlimit_*(cur = NULL, max = NULL)`, `rlimit_all()`,
       `chroot(path = getwd())`), `R/process.R` (`getpid`, `getppid`, `getpgid`,
       `setpgid`, `kill`, `getpriority`, `setpriority`, `sys_config`),
       `R/ids.R` (the eight get/set uid/gid functions, `user_info`,
       `group_info`), `R/apparmor.R` (`aa_config`, `aa_change_profile`).
       `R/restrict.R` for `restrict_self()`.
-- [ ] Port `unix/tests/testthat/test-forking.R` and `test-process.R`
+- [x] Port `unix/tests/testthat/test-forking.R` and `test-process.R`
       verbatim (MIT, attribution in the file header) and make them pass.
-      Add `test-unix-parity.R`: the 31-name constant from design §15 is a
+      Add `test-unix-parity.R`: the 32-name constant from design §15 is a
       subset of `getNamespaceExports("landlock")`, and each function's
       `formals()` equals the recorded `unix` formals.
-- [ ] `R/eval_safe.R`: `eval_safe()` with the unix signature plus `policy`;
+- [x] `R/eval_safe.R`: `eval_safe()` with the unix signature plus `policy`;
       `eval_fork()`; `run()` (fork, `apply_policy`, `execvp`, capture).
       Child side: `options(device = pdf)`, `tmp` honoured, fd hygiene,
       serialize `list(value=, report=)` or `list(error = <condition>)`.
       Parent side: interruptible wait, timeout → error, result-pipe
       discriminator for SIGKILL, stdout/stderr delivered to `std_out`/`std_err`
       (`NULL` discards).
-- [ ] `R/presets.R`: `preset("numeric")` etc. as R objects built from
+- [x] `R/presets.R`: `preset("numeric")` etc. as R objects built from
       `.libPaths()`, `R.home()`, `tempdir()` at call time.
-- [ ] testthat (edition 3, `Config/testthat/parallel` left off because the
+- [x] testthat (edition 3, `Config/testthat/parallel` left off because the
       tests fork): `status()` shape on every platform; `eval_safe(1 + 1)`
       with no policy on every platform including macOS; Landlock tests
       `skip_if(status()$landlock_abi == 0)`; timeout test (`Sys.sleep(5)`,
@@ -327,6 +327,12 @@ Goal: `unix`'s ported test suite passes against `landlock`, and
       legs are slow) and `kill(pid, 0)` says `ESRCH`; pipe-deadlock regression
       (child writes 1 MiB); error objects cross the pipe as conditions;
       `strict = TRUE` errors on ABI 0.
+
+Built differently from the plan, recorded in design §6.3 and §15: the
+result pipe carries typed frames; the report goes to `last_report()` instead
+of an attribute; `q()` in a child is caught by an exit finalizer; output is
+captured with `sink()`; `tmp` becomes `TMPDIR` because `tempdir()` cannot be
+switched without R internals. `unix` has 32 exports, not 31.
 
 Exit criteria: the M1 definition of done from design §14 passes on every
 r-actions leg that runs on a PR, the ported `unix` tests are green, and the

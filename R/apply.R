@@ -1,0 +1,151 @@
+#' Apply a policy
+#'
+#' `apply_policy()` is the engine behind [eval_safe()], [run()] and
+#' [confine()]: it applies the layers of a [policy()] to the calling process,
+#' in the order of design.md section 4 (AppArmor, Landlock, user and group
+#' ids, resource limits). It is irreversible; call it in a child process,
+#' or use `confine()`, which adds a check for threads.
+#'
+#' `confine()` applies a policy to the current R session. Landlock restricts
+#' only the calling thread and the threads and processes it creates later,
+#' so `confine()` refuses to run in a session that already has other threads
+#' (a multi-threaded BLAS, for example) unless `force = TRUE`.
+#'
+#' @param p A [policy()].
+#' @param strict If `TRUE`, fail when the kernel cannot provide a requested
+#'   layer instead of skipping it. Defaults to the policy's `best_effort`
+#'   setting.
+#' @return A report of class `lk_report`: a data frame with one row per
+#'   requested layer and the columns `layer`, `status` (`"applied"` or
+#'   `"skipped"`) and `detail`. Returned invisibly; also available as
+#'   [last_report()].
+#' @export
+apply_policy <- function(p, strict = !isTRUE(p$best_effort)) {
+  check_policy(p)
+  rows <- list()
+  add <- function(layer, status, detail) {
+    rows[[length(rows) + 1L]] <<- data.frame(layer = layer, status = status, detail = detail,
+                                              stringsAsFactors = FALSE)
+  }
+  abi <- .Call(C_ll_abi)
+
+  # AppArmor (between steps 6 and 7)
+  if (!is.null(p$apparmor)) {
+    if (isTRUE(apparmor_info()$enabled)) {
+      aa_change_profile(p$apparmor)
+      add("apparmor", "applied", paste("profile", p$apparmor))
+    } else if (strict) {
+      stop("AppArmor is not enabled; cannot change to profile '", p$apparmor, "'", call. = FALSE)
+    } else {
+      add("apparmor", "skipped", "AppArmor is not enabled")
+    }
+  }
+
+  # Landlock (step 7)
+  want_fs <- !is.null(p$fs)
+  want_net <- !is.null(p$net)
+  want_scope <- !is.null(p$scope) && (p$scope$signal || p$scope$abstract_unix)
+  if (want_fs || want_net || want_scope) {
+    rules <- landlock_rules(p$fs)
+    log <- if (is.null(p$log)) 0L else if (isTRUE(p$log)) 2L else 1L
+    flags <- c(want_fs, want_net, want_scope && p$scope$signal, want_scope && p$scope$abstract_unix,
+               log, !strict, as.integer(getOption("landlock.force_abi", 0L)))
+    r <- .Call(C_ll_restrict, rules$path, rules$mode,
+               p$net$bind %||% integer(), p$net$connect %||% integer(), as.integer(flags))
+    used <- r[[1]]
+    none <- if (used == 0L) "Landlock is not available on this kernel" else NULL
+    if (want_fs)
+      add("landlock-fs", if (r[[2]]) "applied" else "skipped",
+          none %||% sprintf("ABI %d, %d rule%s", used, nrow(rules), if (nrow(rules) == 1L) "" else "s"))
+    if (want_net)
+      add("landlock-net", if (r[[3]]) "applied" else "skipped",
+          none %||% if (r[[3]]) sprintf("TCP bind: %s; connect: %s", ports_text(p$net$bind), ports_text(p$net$connect))
+          else sprintf("TCP rules need Landlock ABI 4; the kernel offers %d", used))
+    if (want_scope)
+      add("landlock-scope", if (r[[4]]) "applied" else "skipped",
+          none %||% if (r[[4]]) paste(c("signal", "abstract_unix")[c(p$scope$signal, p$scope$abstract_unix)], collapse = ", ")
+          else sprintf("scopes need Landlock ABI 6; the kernel offers %d", used))
+  }
+
+  # User and group ids (step 11)
+  if (!is.null(p$ids) && !(is.na(p$ids$uid) && is.na(p$ids$gid))) {
+    .Call(C_setids, p$ids$uid, p$ids$gid)
+    add("ids", "applied", sprintf("uid %s, gid %s", p$ids$uid, p$ids$gid))
+  }
+
+  # Resource limits (step 12): ceilings, never raised above the hard limit.
+  if (length(p$limits)) {
+    shown <- character()
+    for (name in names(p$limits)) {
+      cur <- .Call(C_rlimit_get, name)
+      if (anyNA(cur)) next
+      v <- min(p$limits[[name]], cur[[2]])
+      .Call(C_rlimit_set, name, v, v)
+      shown <- c(shown, paste0(name, "=", if (is.finite(v)) format(v, scientific = FALSE) else "unlimited"))
+    }
+    add("limits", "applied", paste(shown, collapse = ", "))
+  }
+
+  report <- if (length(rows)) do.call(rbind, rows)
+            else data.frame(layer = character(), status = character(), detail = character(),
+                            stringsAsFactors = FALSE)
+  report <- structure(report, landlock_abi = abi, class = c("lk_report", "data.frame"))
+  .state$last_report <- report
+  invisible(report)
+}
+
+ports_text <- function(v) if (length(v)) paste(v, collapse = ", ") else "none"
+
+# One rule per existing path, modes merged; paths must exist.
+landlock_rules <- function(fs) {
+  if (is.null(fs) || !nrow(fs)) return(data.frame(path = character(), mode = integer()))
+  missing <- fs$path[!file.exists(fs$path)]
+  if (length(missing))
+    stop("fs(): path does not exist: ", paste(unique(missing), collapse = ", "), call. = FALSE)
+  path <- normalizePath(fs$path, mustWork = TRUE)
+  mode <- tapply(fs$mode, path, function(m) Reduce(bitwOr, m))
+  data.frame(path = names(mode), mode = as.integer(mode), stringsAsFactors = FALSE)
+}
+
+#' @rdname apply_policy
+#' @param force Apply even if the session has more than one thread.
+#' @export
+confine <- function(p, force = FALSE, strict = !isTRUE(p$best_effort)) {
+  check_policy(p)
+  n <- thread_count()
+  if (n > 1L && !isTRUE(force))
+    stop("confine(): this R session runs ", n, " threads, and Landlock restricts only the ",
+         "calling thread. Use eval_safe() to confine a child process, or force = TRUE.",
+         call. = FALSE)
+  apply_policy(p, strict = strict)
+}
+
+thread_count <- function() {
+  if (!dir.exists("/proc/self/task")) return(1L)
+  length(list.files("/proc/self/task"))
+}
+
+#' The report of the last enforcement
+#'
+#' Every [eval_safe()], [run()], [confine()] and [apply_policy()] call that
+#' was given a policy records which layers it applied and which it skipped.
+#'
+#' @return The most recent report (class `lk_report`), or `NULL` if no policy
+#'   has been applied in this session.
+#' @export
+last_report <- function() {
+  .state$last_report
+}
+
+#' @export
+print.lk_report <- function(x, ...) {
+  abi <- attr(x, "landlock_abi")
+  cat("<landlock report>", if (!is.null(abi)) paste("Landlock ABI", abi), "\n")
+  if (!nrow(x)) {
+    cat("  no layers requested\n")
+    return(invisible(x))
+  }
+  for (i in seq_len(nrow(x)))
+    cat(sprintf("  %-15s %-8s %s\n", x$layer[i], x$status[i], x$detail[i]))
+  invisible(x)
+}
