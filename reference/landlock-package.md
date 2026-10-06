@@ -1,12 +1,26 @@
-# landlock: Process Confinement with 'Landlock', 'seccomp' and Capabilities
+# landlock: process confinement for R
 
-Evaluate R expressions or run programs in a kernel-enforced sandbox.
-Builds on 'Landlock' <https://landlock.io/> (filesystem and TCP rules),
-'seccomp-bpf' (system call filters), capability dropping and resource
-limits, without external libraries. Degrades gracefully with a report
-when a feature is unavailable. A drop-in replacement for the 'unix'
-package: every function it exports is provided with the same name and
-arguments.
+Evaluate R expressions or run programs in a kernel-enforced sandbox, and
+use every function of the 'unix' package under the same name.
+
+## Details
+
+Three execution models share one
+[`policy()`](https://pedrobtz.github.io/landlock/reference/policy.md):
+
+- [`eval_safe()`](https://pedrobtz.github.io/landlock/reference/eval_safe.md)
+  forks, restricts the child and evaluates R there;
+
+- [`run()`](https://pedrobtz.github.io/landlock/reference/run.md) forks,
+  restricts the child and executes a program;
+
+- [`confine()`](https://pedrobtz.github.io/landlock/reference/apply_policy.md)
+  restricts the current R process, irreversibly.
+
+[`status()`](https://pedrobtz.github.io/landlock/reference/status.md)
+reports what the running kernel offers; every enforcement returns a
+report of the layers it applied or skipped
+([`last_report()`](https://pedrobtz.github.io/landlock/reference/last_report.md)).
 
 ## See also
 
