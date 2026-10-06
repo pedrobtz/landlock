@@ -8,6 +8,8 @@
 \alias{limits}
 \alias{ids}
 \alias{apparmor}
+\alias{syscalls}
+\alias{caps}
 \title{Build a confinement policy}
 \usage{
 policy(best_effort = TRUE, log = NULL)
@@ -34,6 +36,10 @@ limits(
 ids(p, uid = NULL, gid = NULL)
 
 apparmor(p, profile)
+
+syscalls(p, deny, action = c("errno", "kill", "log", "trap"), errno = "EPERM")
+
+caps(p, keep = character())
 }
 \arguments{
 \item{best_effort}{If \code{TRUE} (the default), layers the kernel cannot
@@ -59,6 +65,12 @@ ceilings; \code{NULL} leaves a resource alone.}
 \item{uid, gid}{User and group, as numeric ids or names.}
 
 \item{profile}{Name of an AppArmor profile.}
+
+\item{deny}{Character vector of system call names.}
+
+\item{action, errno}{See \code{\link[=seccomp_deny]{seccomp_deny()}}.}
+
+\item{keep}{Capability names to keep; see \code{\link[=caps_keep]{caps_keep()}}.}
 }
 \value{
 An object of class \code{lk_policy}.
@@ -94,6 +106,11 @@ strings such as \code{"512m"} or \code{"2g"}.
 every other layer except the resource limits.
 \item \code{apparmor()}: change to an AppArmor profile, as \code{unix::eval_safe(profile =)}
 does.
+\item \code{syscalls()}: a seccomp filter denying the listed system calls; see
+\code{\link[=seccomp_deny]{seccomp_deny()}} for the actions and \code{\link[=preset]{preset()}} for ready-made sets.
+Calling \code{syscalls()} again adds to the list.
+\item \code{caps()}: drop every capability except \code{keep} and set \code{no_new_privs};
+see \code{\link[=caps_drop_all]{caps_drop_all()}}.
 }
 }
 \examples{

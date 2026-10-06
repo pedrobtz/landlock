@@ -22,3 +22,13 @@ skip_without_landlock <- function(abi = 1L) {
 }
 
 errmsg <- function(expr) tryCatch({ expr; "" }, error = conditionMessage)
+
+# The numeric preset's Landlock layers alone, without its seccomp filter
+# (which denies execve, so exec fails with EPERM before Landlock decides)
+# and without dropping capabilities.
+landlock_only <- function() {
+  p <- preset("numeric")
+  p$syscalls <- NULL
+  p$caps <- NULL
+  p
+}

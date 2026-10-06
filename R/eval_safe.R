@@ -37,6 +37,10 @@
 #' @param timeout Wall-clock limit in seconds; `0` for none.
 #' @param priority Scheduling priority of the child; see [setpriority()].
 #' @param uid,gid User and group to switch to (root only), as ids or names.
+#'   After the switch the child can only read what that user can read,
+#'   including the R libraries it lazy-loads code from: landlock's own
+#'   functions are loaded beforehand, but functions of other packages used for
+#'   the first time in the child must be readable by that user.
 #' @param rlimits Named vector or list of resource limits, as in 'unix', for
 #'   example `c(cpu = 60, fsize = 1e6)`. Each sets both the soft and the hard
 #'   limit; zero and `NA` are ignored.
@@ -236,6 +240,7 @@ fork_call <- function(child, tmp, timeout, std_out, std_err, close_fds,
     if (!dir.exists(tmp)) dir.create(tmp, recursive = TRUE)
     tmp <- normalizePath(tmp)
   }
+  load_namespace()
   wrapped <- function() {
     child_prepare(tmp, capture_r_output)
     on.exit(child_flush())
@@ -294,6 +299,26 @@ child_died_message <- function(res) {
   if (!is.na(res$exit_code))
     return(sprintf("child process has died before returning a result (exit status %d)", res$exit_code))
   "child process has died before returning a result"
+}
+
+# Package functions are lazy-loaded: the first use reads the installed
+# .rdb. After a policy is applied the child may no longer be able to read it
+# (Landlock rules that do not list the library, or a switch to another user
+# who cannot enter the installing user's directories), so a function first
+# used then, by apply_policy()'s later steps or by on.exit(), would fail and
+# kill the child. Loading the whole namespace in the session once, before the
+# first fork, means children only ever use what they inherited in memory.
+load_namespace <- function() {
+  if (isTRUE(.state$namespace_loaded)) return(invisible())
+  ns <- asNamespace("landlock")
+  for (name in ls(ns, all.names = TRUE)) get(name, envir = ns, inherits = FALSE)
+  # The attached exports may hold promises of their own.
+  if ("package:landlock" %in% search()) {
+    pkg <- as.environment("package:landlock")
+    for (name in ls(pkg, all.names = TRUE)) get(name, envir = pkg, inherits = FALSE)
+  }
+  .state$namespace_loaded <- TRUE
+  invisible()
 }
 
 # In the forked child, before any user code.

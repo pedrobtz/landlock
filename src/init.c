@@ -7,6 +7,17 @@
 
 SEXP C_ll_abi(void);
 SEXP C_ll_restrict(SEXP paths, SEXP modes, SEXP bind, SEXP connect, SEXP flags);
+SEXP C_sc_table(void);
+SEXP C_sc_lookup(SEXP names);
+SEXP C_sc_deny(SEXP nrs, SEXP action, SEXP errnum);
+SEXP C_sc_status(void);
+SEXP C_errno_value(SEXP name);
+SEXP C_cap_last(void);
+SEXP C_caps_drop_bounding(SEXP keep);
+SEXP C_caps_clear(SEXP keep);
+SEXP C_nnp_set(void);
+SEXP C_nnp_get(void);
+SEXP C_strerror(SEXP err);
 SEXP C_rlimit_get(SEXP name);
 SEXP C_rlimit_set(SEXP name, SEXP cur, SEXP max);
 SEXP C_getid(SEXP which);
@@ -37,6 +48,17 @@ SEXP C_freeze(SEXP interrupt);
 static const R_CallMethodDef call_methods[] = {
     {"C_ll_abi", (DL_FUNC) &C_ll_abi, 0},
     {"C_ll_restrict", (DL_FUNC) &C_ll_restrict, 5},
+    {"C_sc_table", (DL_FUNC) &C_sc_table, 0},
+    {"C_sc_lookup", (DL_FUNC) &C_sc_lookup, 1},
+    {"C_sc_deny", (DL_FUNC) &C_sc_deny, 3},
+    {"C_sc_status", (DL_FUNC) &C_sc_status, 0},
+    {"C_errno_value", (DL_FUNC) &C_errno_value, 1},
+    {"C_cap_last", (DL_FUNC) &C_cap_last, 0},
+    {"C_caps_drop_bounding", (DL_FUNC) &C_caps_drop_bounding, 1},
+    {"C_caps_clear", (DL_FUNC) &C_caps_clear, 1},
+    {"C_nnp_set", (DL_FUNC) &C_nnp_set, 0},
+    {"C_nnp_get", (DL_FUNC) &C_nnp_get, 0},
+    {"C_strerror", (DL_FUNC) &C_strerror, 1},
     {"C_rlimit_get", (DL_FUNC) &C_rlimit_get, 1},
     {"C_rlimit_set", (DL_FUNC) &C_rlimit_set, 3},
     {"C_getid", (DL_FUNC) &C_getid, 1},

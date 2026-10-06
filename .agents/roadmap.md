@@ -343,25 +343,32 @@ reason).
 
 ## Stage 4 — seccomp and capabilities, M2
 
-- [ ] `tools/gen_syscalls.sh` produces `src/sc_table.h` from a plain name
+- [x] `tools/gen_syscalls.sh` produces `src/sc_table.h` from a plain name
       list (~160 names, each `#ifdef SYS_<name>`-guarded); commit the output.
-- [ ] `src/compat/seccomp_compat.h`, `src/compat/caps_compat.h`.
-- [ ] `sc.c`: table lookups, `lk_sc_status()`, `lk_sc_deny()` building the
+- [x] `src/compat/seccomp_compat.h`, `src/compat/caps_compat.h`.
+- [x] `sc.c`: table lookups, `lk_sc_status()`, `lk_sc_deny()` building the
       §5.2 BPF (arch check, x32 guard on x86_64, 2 instructions per syscall),
       TSYNC install with `EINVAL` fallback and prctl fallback.
-- [ ] `caps.c`: `lk_cap_last`, `lk_cap_lookup`, `lk_caps_drop_bounding`,
+- [x] `caps.c`: `lk_cap_last`, `lk_cap_lookup`, `lk_caps_drop_bounding`,
       `lk_caps_clear` (capset v3 + ambient clear), `lk_nnp_set/get`.
-- [ ] Harness: `test_sc.c` (deny `getppid` → `EPERM`; `kill` action kills
+- [x] Harness: `test_sc.c` (deny `getppid` → `EPERM`; `kill` action kills
       the child with SIGSYS; filter rejected on wrong arch), `test_caps.c`
       (bounding set empty after drop; `CapEff` zero after clear).
-- [ ] `R/seccomp.R`, `R/caps.R`; `syscalls()` and `caps()` verbs wired into
+- [x] `R/seccomp.R`, `R/caps.R`; `syscalls()` and `caps()` verbs wired into
       `apply_policy()` at steps 8 and 10 of §4; syscall presets.
-- [ ] testthat: `eval_safe(.Call(C_test_getppid), policy = policy() |>
+- [x] testthat: `eval_safe(.Call(C_test_getppid), policy = policy() |>
       syscalls(deny = "getppid"))` surfaces `EPERM`; `action = "kill"` gives
       the "killed by signal" error; `preset("dangerous")` lets `1 + 1` and
       `lm()` run; `no_exec` makes `system("true")` fail; caps test
       `skip_if(status()$caps$effective == "0")` otherwise asserts the forked
       child's `CapBnd` is zero. All pass as the non-root runner user.
+
+Built differently from the plan, recorded in design §4 and §5: capabilities
+are two steps around `setids` (the bounding set at step 8, the sets at step
+12); the syscall table names every call on every architecture, `-1` where
+absent; the BPF definitions are vendored so musl needs no `linux/filter.h`;
+capability names live in R. The kill test uses `getppid()` directly: with
+an errno filter it returns `-1`, so no C test helper was needed.
 
 Exit criteria: M2 definition of done from design §14; harness and testthat
 green as root (container job) and non-root (runner job).

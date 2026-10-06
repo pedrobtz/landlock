@@ -29,6 +29,11 @@
 #'   every other layer except the resource limits.
 #' * `apparmor()`: change to an AppArmor profile, as `unix::eval_safe(profile =)`
 #'   does.
+#' * `syscalls()`: a seccomp filter denying the listed system calls; see
+#'   [seccomp_deny()] for the actions and [preset()] for ready-made sets.
+#'   Calling `syscalls()` again adds to the list.
+#' * `caps()`: drop every capability except `keep` and set `no_new_privs`;
+#'   see [caps_drop_all()].
 #'
 #' @param best_effort If `TRUE` (the default), layers the kernel cannot
 #'   provide are skipped and reported. If `FALSE`, applying the policy fails
@@ -166,6 +171,28 @@ apparmor <- function(p, profile) {
   check_policy(p)
   stopifnot(is.character(profile), length(profile) == 1L, !is.na(profile))
   p$apparmor <- profile
+  p
+}
+
+#' @rdname policy
+#' @param deny Character vector of system call names.
+#' @param action,errno See [seccomp_deny()].
+#' @export
+syscalls <- function(p, deny, action = c("errno", "kill", "log", "trap"), errno = "EPERM") {
+  check_policy(p)
+  spec <- syscall_spec(deny, action, errno)
+  if (!is.null(p$syscalls)) spec$deny <- unique(c(p$syscalls$deny, spec$deny))
+  p$syscalls <- spec
+  p
+}
+
+#' @rdname policy
+#' @param keep Capability names to keep; see [caps_keep()].
+#' @export
+caps <- function(p, keep = character()) {
+  check_policy(p)
+  cap_numbers(keep)
+  p$caps <- list(keep = keep)
   p
 }
 

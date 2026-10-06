@@ -11,15 +11,17 @@ name: arch
 # kind that is correct on one target only: the seccomp filter embeds the
 # AUDIT_ARCH constant and the syscall numbers of the build architecture, the
 # x32 guard exists on x86_64 alone, and the Landlock and seccomp syscall
-# fallback numbers differ per arch. The three legs here are the three traps:
+# fallback numbers differ per arch. The two legs here run without emulation
+# on the x86_64 kernel, so every layer is really exercised:
 #
-#   i386     AUDIT_ARCH_I386, 32-bit syscall table, no x32 bit, 32-bit size_t
-#   musl     no glibc extensions; linux-headers package instead of glibc's uapi
-#   aarch64  asm-generic syscall numbers (no SYS_open, no SYS_getppid alias
-#            surprises), AUDIT_ARCH_AARCH64; the platform most servers now run
+#   i386   AUDIT_ARCH_I386, 32-bit syscall table, no x32 bit, 32-bit size_t,
+#          socketcall; glibc returns -errno from getppid()
+#   musl   no glibc extensions; linux-headers package instead of glibc's uapi
 #
-# aarch64 runs under QEMU and is slow, which is why this is weekly and
-# on-demand rather than per push. Run it by hand before each release.
+# aarch64 is not here: under QEMU user-mode emulation seccomp filters are
+# rejected (EINVAL) and every process gains an emulator thread, so the
+# layers that differ by architecture cannot be tested. It runs natively on
+# GitHub's ubuntu-24.04-arm runners instead (R-CMD-check and c-harness).
 jobs:
   arch:
     uses: pedrobtz/r-actions/.github/workflows/arch.yml@v1
@@ -30,7 +32,4 @@ jobs:
           "setup": "apt-get update && apt-get install -y --no-install-recommends r-base-dev locales libuv1-dev && echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen && locale-gen"},
          {"name": "musl", "platform": "linux/amd64",
           "image": "alpine:3.21",
-          "setup": "apk add --no-cache R R-dev R-doc build-base linux-headers libuv-dev"},
-         {"name": "aarch64", "platform": "linux/arm64",
-          "image": "arm64v8/debian:bookworm",
-          "setup": "apt-get update && apt-get install -y --no-install-recommends r-base-dev locales libuv1-dev && echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen && locale-gen"}]
+          "setup": "apk add --no-cache R R-dev R-doc build-base linux-headers libuv-dev"}]
