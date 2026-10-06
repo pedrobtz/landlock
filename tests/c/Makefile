@@ -8,8 +8,8 @@
 CC     ?= cc
 CFLAGS ?= -std=gnu11 -O1 -g -Wall -Wextra -pedantic -Wstrict-prototypes -D_GNU_SOURCE
 SRC    := ../../src
-CORE   := $(SRC)/ll.c
-TESTS  :=
+CORE   := $(SRC)/ll.c $(SRC)/lim.c $(SRC)/proc.c
+TESTS  := test_ll.c test_lim.c test_proc.c
 HDRS   := harness.h suites.h $(SRC)/lk.h $(wildcard $(SRC)/compat/*.h)
 
 run: run.c $(TESTS) $(CORE) $(HDRS)

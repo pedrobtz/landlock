@@ -238,33 +238,39 @@ workflow in `.github/workflows/` has run green at least once on `main`.
 Goal: the reusable C library (design §5.1, §5.5, §5.6) proven by the harness,
 with no R in sight.
 
-- [ ] `src/compat/landlock_compat.h`: include system header if present,
-      then `#ifndef`-define every struct and constant through ABI 7 plus the
-      `__NR_landlock_*` fallbacks (444–446). Ubuntu 24.04's header stops at
-      ABI 4; the compat header is the source of truth.
-- [ ] `ll.c`: `lk_ll_abi()` (done in Stage 1), `lk_ll_restrict()` per the §5.1 algorithm.
+- [x] `src/compat/landlock_compat.h`: every struct and constant through
+      ABI 7 under `lk_`/`LK_` names, plus the `__NR_landlock_*` fallbacks
+      (444–446). The system header is never included: its
+      `struct landlock_ruleset_attr` lacks `scoped` and a struct cannot be
+      `#ifndef`-guarded (design §10).
+- [x] `ll.c`: `lk_ll_abi()` (done in Stage 1), `lk_ll_restrict()` per the §5.1 algorithm.
       Ruleset attr size computed from ABI (8/16/24 bytes), `ACCESS_FILE` mask
       for non-directories, rights table from §9, `no_new_privs` before
       `restrict_self`, best-effort masking versus `-ENOTSUP` in strict mode,
       report struct filled in.
-- [ ] `lim.c`: `lk_rlimit_lookup/get/set`, `lk_setids`, `lk_setid`,
+- [x] `lim.c`: `lk_rlimit_lookup/get/set`, `lk_setids`, `lk_setid`,
       `lk_setpgid`, `lk_priority_get/set`, `lk_chroot`,
       `lk_aa_change_profile`. `RLIM_INFINITY` ↔ `UINT64_MAX`.
-- [ ] `proc.c`: `lk_fork`, `lk_pipe` (`O_CLOEXEC`), `lk_dup2`,
+- [x] `proc.c`: `lk_fork`, `lk_pipe` (`O_CLOEXEC`), `lk_dup2`,
       `lk_write_all`, `lk_wait_collect` (poll loop with slice argument,
       `EINTR` handling, drains all fds, SIGKILL on timeout, `waitpid`),
       `lk_kill`, `lk_close_from` (fd hygiene), `lk_child_exit` (close pipe
       write ends, `raise(SIGKILL)`).
-- [ ] `lk.h`: every prototype, `(void)` on empty parameter lists
+- [x] `lk.h`: every prototype, `(void)` on empty parameter lists
       (`-Wstrict-prototypes` is on in R-devel checks), no R headers.
-- [ ] Error convention enforced: `0`/`-errno`, no `fprintf`, no `exit`, no
+- [x] Error convention enforced: `0`/`-errno`, no `fprintf`, no `exit`, no
       globals.
-- [ ] Harness tests: `test_ll.c` (deny `/etc` read → `EACCES`; allow tempdir
+- [x] Harness tests: `test_ll.c` (deny `/etc` read → `EACCES`; allow tempdir
       → ok; file-not-directory rule accepted; ABI 0 → report all zero, return
       0 in best-effort, `-ENOTSUP` strict), `test_lim.c` (`RLIMIT_NOFILE`
       lowered → `open` fails with `EMFILE`), `test_proc.c` (fork + pipe +
       timeout kill; 1 MiB child output does not deadlock; `close_from` leaves
       only the kept fds).
+
+Added beyond the plan: `force_abi` in the policy so the harness stacks one
+domain per ABI level against the real kernel and tests the "absent" path on a
+kernel that has Landlock; `failed_path` in the report; `lk_userns_works()`
+for `status()`.
 
 Exit criteria: harness green on the dev kernel as root and as `nobody`; the
 same sources compile warning-free under `clang -std=gnu23 -pedantic` and

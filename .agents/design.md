@@ -203,19 +203,29 @@ enum { LK_LL_READ = 1, LK_LL_WRITE = 2, LK_LL_EXEC = 4 };
 struct lk_ll_path  { const char *path; unsigned mode; };     /* mode: OR of LK_LL_* */
 
 struct lk_ll_policy {
+    int handle_fs;                     /* 1 = mediate the filesystem; paths are the allow-list */
     const struct lk_ll_path *paths;  size_t npaths;
     int handle_net;                    /* 1 = mediate TCP; allow-lists below   */
     const uint16_t *bind_ports;        size_t nbind;
     const uint16_t *connect_ports;     size_t nconnect;
     int scope_signal, scope_abstract_unix;
-    int log;                           /* OR of LK_LL_LOG_* (ABI 7), 0 = default */
-    int best_effort;                   /* 1: mask to ABI; 0: -ENOTSUP if anything unsupported */
+    unsigned log;                      /* restrict_self LOG flags (ABI 7), 0 = kernel default */
+    int best_effort;                   /* 1: mask to ABI; 0: -EOPNOTSUPP if anything unsupported */
+    int force_abi;                     /* testing: >0 use at most this ABI, -1 act as absent, 0 probe */
 };
 
-struct lk_ll_report { int abi; int fs; int net; int scope; int log; }; /* 1 applied / 0 skipped */
+struct lk_ll_report { int abi; int fs; int net; int scope; int log; long failed_path; };
 
 int lk_ll_restrict(const struct lk_ll_policy *p, struct lk_ll_report *r);
+uint64_t lk_ll_handled_fs(int abi);
 ```
+
+`handle_fs` is separate from `npaths` so that `policy() |> net()` without
+`fs()` mediates TCP only and leaves the filesystem alone, while `fs()` with no
+paths denies the whole filesystem. `force_abi` lets the harness and the R tests
+exercise every ruleset size and the "absent" path on a kernel that offers ABI 7;
+a kernel accepts rulesets written for any older ABI. `failed_path` is the index
+of the path whose rule failed, so the R error can name it.
 
 Algorithm:
 
@@ -377,20 +387,29 @@ pure R over `Sys.info()`, `getpid()` and the rlimit calls.
 pid_t lk_fork(void);
 int   lk_pipe(int fds[2]);                               /* O_CLOEXEC */
 int   lk_dup2(int from, int to);
+int   lk_set_nonblock(int fd);
 int   lk_write_all(int fd, const void *buf, size_t len);
+int   lk_devnull_stdin(void);
 int   lk_close_from(int lowfd, const int *keep, size_t nkeep);
-/* close_range(2) where available, else iterate /proc/self/fd (Linux) or /dev/fd (macOS) */
+/* close_range(2) over the gaps between kept fds where available, else list
+   /proc/self/fd (Linux) or /dev/fd (macOS) in batches: no malloc in a fresh child */
 struct lk_buf { char *data; size_t len, cap; };
-int   lk_wait_collect(pid_t pid, const int *fds, size_t nfds, int slice_ms,
+void  lk_buf_free(struct lk_buf *b);
+int   lk_wait_collect(pid_t pid, int *fds, size_t nfds, int slice_ms,
                         struct lk_buf *bufs, int *status, int *done);
-/* ONE poll() slice of at most slice_ms: drains every readable fd into its buffer,
-   handles EINTR, reaps with waitpid(WNOHANG) once every fd hit EOF. Sets *done.
-   Returns 0 or -errno. The caller loops; between slices rglue.c calls
-   R_CheckUserInterrupt() and enforces the wall-clock timeout, so Ctrl-C works
-   and the core stays free of R. Draining while waiting avoids the 64 KiB pipe deadlock. */
+/* ONE poll() slice of at most slice_ms: drains every readable fd into its buffer
+   (an fd at EOF is closed and set to -1), handles EINTR, then waitpid(WNOHANG).
+   Once reaped, drains what is left and sets *done and *status (-1 if someone else
+   reaped it, e.g. a SIGCHLD handler). Returns 0 or -errno. The caller loops; between
+   slices rglue.c calls R_CheckUserInterrupt() and enforces the wall-clock timeout, so
+   Ctrl-C works and the core stays free of R. Draining while waiting avoids the 64 KiB
+   pipe deadlock. */
 int   lk_kill(pid_t pid, int sig);
 void  lk_child_exit(const int *fds, size_t nfds);
-/* close the given write ends, then raise(SIGKILL). Never returns. */
+/* fflush(NULL), close the given fds, then raise(SIGKILL). Never returns. */
+int   lk_userns_works(void);
+/* forked probe: 1 if unshare(CLONE_NEWUSER) succeeds; the probe child reports
+   through a pipe and ends by SIGKILL, never through an exit code */
 ```
 
 Why `raise(SIGKILL)` and not `_exit()`: `R CMD check` flags compiled code that
@@ -606,17 +625,20 @@ Pass the size matching the probed ABI.
 
 ## 10. Compat headers (`src/compat/`)
 
-Each file `#include`s the system uapi header if present, then `#ifndef`-defines
-every constant and struct we use. Reason: Ubuntu 24.04's `linux/landlock.h`
-stops at ABI 4 while the kernel it runs on is ABI 7; constants must come from
-us, not the build host. Keep the licence note: uapi constants are
+The build host's uapi headers are never included for Landlock. Ubuntu
+24.04's `linux/landlock.h` stops at ABI 4 while the kernel it runs on is ABI 7,
+and the obvious remedy, including the system header and `#ifndef`-defining
+what is missing, fails for structs: `struct landlock_ruleset_attr` there lacks
+the ABI 6 `scoped` field and cannot be redefined. So every name in the compat
+headers carries an `lk_` / `LK_` prefix (`struct lk_landlock_ruleset_attr`,
+`LK_FS_READ_FILE`, ...), and only the `__NR_*` syscall numbers are
+`#ifndef`-guarded. Keep the licence note: uapi constants are
 `GPL-2.0 WITH Linux-syscall-note` (user-space use explicitly permitted);
-list this in `LICENSE.note`.
+listed in `inst/COPYRIGHTS` and `LICENSE.note`.
 
-`landlock_compat.h`: `struct landlock_ruleset_attr`, `landlock_path_beneath_attr`
-(packed), `landlock_net_port_attr`, all `LANDLOCK_ACCESS_FS_*`,
-`LANDLOCK_ACCESS_NET_*`, `LANDLOCK_SCOPE_*`, `LANDLOCK_RESTRICT_SELF_LOG_*`,
-`LANDLOCK_CREATE_RULESET_VERSION`, rule types, and `__NR_landlock_*` fallbacks
+`landlock_compat.h`: the three attribute structs (path-beneath packed), all
+filesystem and network rights, `LK_FS_ACCESS_FILE`, scopes, restrict-self log
+flags, the version flag, rule types, and `__NR_landlock_*` fallbacks
 (444, 445, 446 — identical on every architecture since they are asm-generic).
 
 `seccomp_compat.h`: `SECCOMP_SET_MODE_FILTER`, `SECCOMP_FILTER_FLAG_TSYNC|LOG`,
