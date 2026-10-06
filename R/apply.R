@@ -146,6 +146,12 @@ apply_policy <- function(p, strict = !isTRUE(p$best_effort)) {
     }
   }
 
+  # File mode creation mask.
+  if (!is.null(p$umask)) {
+    Sys.umask(p$umask)
+    add("umask", "applied", p$umask)
+  }
+
   # Resource limits (step 12): ceilings, never raised above the hard limit.
   # A limit the platform does not have, or refuses (macOS rejects an
   # address-space limit), is skipped and named in the report; in strict mode

@@ -566,9 +566,18 @@ package lacked. Added, as far as the C core supports it with little glue:
       `eval_fork()` and `run()`.
 - [x] seccomp argument rules: `block_tty`, `socket_families`,
       `lock_personality`; terminal ioctls blocked in the presets.
-- [x] Named syscall groups; `fs(missing = "ignore")`; further rlimits;
+- [x] Named syscall groups and `seccomp_rules()` (the filter as a table,
+      like libseccomp's `export_pfc`); `fs(missing = "ignore")`; further
+      rlimits, `rtprio = 0` in every preset; a `umask()` verb;
       `deny_write_execute()` (PR_SET_MDWE); `partial` enforcement in the
       report; `status()` errata and `legacy_tiocsti`.
+- [x] Documented: die-with-parent covers the child only; its own children
+      are killed with its process group on a timeout or interrupt, but can
+      outlive a session that dies.
+
+Not added on purpose: `rlimit_*()` wrappers for the new resources.
+`limits()` sets them in a policy, and further `rlimit_*` exports would go
+beyond the `unix` API the package mirrors.
 
 Deferred, with the reason:
 

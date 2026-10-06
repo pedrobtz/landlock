@@ -41,9 +41,10 @@ First release.
   * `syscalls()` gains `block_tty`, `socket_families` and
     `lock_personality`, which look at system call arguments; the presets
     block terminal injection;
-  * the `"dangerous"` system call set is made of named groups;
+  * the `"dangerous"` system call set is made of named groups, and
+    `seccomp_rules()` lists the exact filter a policy produces;
   * `fs(missing = "ignore")`; further `limits()` (`rtprio`, `nice`,
-    `sigpending`, `msgqueue`, `rttime`, `rss`, `locks`);
-    `deny_write_execute()`;
+    `sigpending`, `msgqueue`, `rttime`, `rss`, `locks`), with `rtprio = 0`
+    in every preset; `umask()`; `deny_write_execute()`;
   * reports show `partial` when Landlock cannot enforce every right of a
     write rule; `status()` reports Landlock errata and `legacy_tiocsti`.

@@ -15,10 +15,10 @@
 #' * `"install"`: install a package from source. As `"numeric"`, plus
 #'   executing the compiler toolchain (and the dynamic loader, which the
 #'   kernel opens for execution too) and writing to `lib`; only the
-#'   `"dangerous"` calls are denied.
+#'   `"dangerous"` calls are denied. Also no real-time scheduling.
 #' * `"plumber"`: serve HTTP. As `"numeric"`, plus binding to `port`; the
-#'   `"dangerous"` and `"no_exec"` calls are denied, and sockets are limited
-#'   to Unix, IPv4 and IPv6.
+#'   `"dangerous"` and `"no_exec"` calls are denied, sockets are limited to
+#'   Unix, IPv4 and IPv6, and there is no real-time scheduling.
 #'
 #' System call sets, character vectors for [syscalls()] and
 #' [seccomp_deny()]:
@@ -123,11 +123,11 @@ preset_install <- function(lib = .libPaths()[1]) {
           exec = existing(c(R.home(), "/usr/bin", "/bin", "/usr/lib", "/usr/lib64", "/lib",
                             "/lib64", "/usr/libexec", "/usr/local/bin", "/opt/R")),
           write = lib)
-  caps(syscalls(p, deny = sc_dangerous, block_tty = TRUE))
+  caps(limits(syscalls(p, deny = sc_dangerous, block_tty = TRUE), rtprio = 0))
 }
 
 preset_plumber <- function(port = 8000) {
   p <- net(landlock_base(), bind = port)
-  caps(syscalls(p, deny = c(sc_dangerous, sc_no_exec), block_tty = TRUE,
-                socket_families = c("unix", "inet", "inet6")))
+  caps(limits(syscalls(p, deny = c(sc_dangerous, sc_no_exec), block_tty = TRUE,
+                       socket_families = c("unix", "inet", "inet6")), rtprio = 0))
 }

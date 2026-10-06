@@ -141,3 +141,29 @@ test_that("status() reports errata and the TIOCSTI setting", {
   expect_true(is.integer(st$landlock_errata))
   expect_true(is.logical(st$tiocsti_legacy))
 })
+
+test_that("umask() sets the child's file creation mask", {
+  expect_identical(eval_safe(format(Sys.umask()), policy = umask(policy(), "027")), "27")
+  expect_identical(last_report()$layer, "umask")
+  expect_error(umask(policy(), "999"), "octal")
+  f <- file.path(tempdir(), "lk-umask")
+  eval_safe(writeLines("x", f), policy = umask(policy(), "077"))
+  expect_identical(format(file.mode(f)), "600")
+})
+
+test_that("every preset forbids real-time scheduling", {
+  for (name in c("numeric", "install", "plumber"))
+    expect_identical(preset(name)$limits$rtprio, 0, label = name)
+})
+
+test_that("seccomp_rules() lists the filter a policy produces", {
+  expect_error(seccomp_rules(policy()), "no syscalls")
+  r <- seccomp_rules(syscalls(policy(), deny = c("ptrace", "unshare"), block_tty = TRUE))
+  expect_named(r, c("call", "nr", "condition", "result"))
+  skip_if_not(is_linux())
+  expect_true(all(c("ptrace", "unshare", "ioctl", "clone") %in% r$call))
+  expect_match(r$condition[r$call == "ioctl"], "^arg1 in")
+  expect_identical(r$result[r$call == "ptrace"], "errno EPERM")
+  expect_match(r$condition[r$call == "clone"], "CLONE_NEW")
+  expect_identical(seccomp_rules(syscalls(policy(), deny = "clone3"))$result, "errno ENOSYS")
+})

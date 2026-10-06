@@ -7,6 +7,7 @@
 \alias{scope}
 \alias{limits}
 \alias{ids}
+\alias{umask}
 \alias{deny_write_execute}
 \alias{apparmor}
 \alias{syscalls}
@@ -50,6 +51,8 @@ limits(
 )
 
 ids(p, uid = NULL, gid = NULL)
+
+umask(p, mask)
 
 deny_write_execute(p)
 
@@ -105,6 +108,9 @@ real-time priority (\code{0} forbids real-time scheduling) and real-time CPU
 time in microseconds. A limit the platform lacks is skipped and reported.}
 
 \item{uid, gid}{User and group, as numeric ids or names.}
+
+\item{mask}{File mode creation mask, as for \code{\link[=Sys.umask]{Sys.umask()}}, for example
+\code{"077"} so that every file the child creates is private.}
 
 \item{profile}{Name of an AppArmor profile.}
 
@@ -166,6 +172,8 @@ does.
 Calling \code{syscalls()} again adds to the list.
 \item \code{caps()}: drop every capability except \code{keep} and set \code{no_new_privs};
 see \code{\link[=caps_drop_all]{caps_drop_all()}}.
+\item \code{umask()}: the file mode creation mask of the child, so that files it
+creates get the intended permissions.
 \item \code{deny_write_execute()}: no memory mapping may become both writable and
 executable (Linux 6.3, \code{PR_SET_MDWE}), which stops code injected into
 writable memory from running. Breaks just-in-time compilers (V8, LLVM);

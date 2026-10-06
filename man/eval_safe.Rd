@@ -88,7 +88,10 @@ in the same order; \code{policy} is added at the end.
 \details{
 The child is killed when \code{timeout} seconds of wall-clock time pass, when
 the session is interrupted, and when the session itself dies (so a killed
-R process leaves no sandboxed child running without its timeout). It
+R process leaves no sandboxed child running without its timeout). On a
+timeout or an interrupt the child's whole process group is killed, which
+includes the processes it started; when the session dies, only the child
+itself is, and processes it started can outlive it. It
 runs in a session of its own, with no controlling terminal, so it cannot
 inject input into the user's terminal. Errors in the child are raised again in
 the session with their original class. Output the child writes is

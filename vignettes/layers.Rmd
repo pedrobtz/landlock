@@ -118,7 +118,9 @@ Whatever the policy, every child created by `eval_safe()`, `eval_fork()` or
 cannot push input into the user's terminal, and asks the kernel to kill it
 when the R session dies, so a killed session leaves no child running without
 its timeout. A switch of user clears that request; the package makes it
-again.
+again. That request covers the child only: on a timeout or an interrupt the
+package kills the child's whole process group, but when the session itself
+dies, processes the child started can outlive it.
 
 `deny_write_execute()` forbids memory that is both writable and executable
 (Linux 6.3), which stops code injected into writable memory from running. It

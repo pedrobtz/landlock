@@ -13,6 +13,7 @@ reference:
   contents:
   - policy
   - preset
+  - seccomp_rules
   - apply_policy
 - title: What this kernel offers
   contents:

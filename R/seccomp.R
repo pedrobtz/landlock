@@ -91,14 +91,13 @@ syscall_spec <- function(syscalls, action, errno) {
 }
 
 # Returns list(status, detail, tsync); strict errors instead of skipping.
-install_filter <- function(spec, strict) {
-  if (!is_linux()) {
-    if (strict) stop("seccomp is only available on Linux", call. = FALSE)
-    return(list(status = "skipped", detail = "seccomp is only available on Linux", tsync = FALSE))
-  }
+# The rules a filter spec turns into on this architecture, in filter order:
+# argument rules first (a call they do not match falls through to the plain
+# deny list), then the plain denies. Used to install and to list.
+filter_rules <- function(spec) {
   nrs <- .Call(C_sc_lookup, spec$deny)
   absent <- spec$deny[nrs == -1L]
-  present <- spec$deny[nrs >= 0L]
+  names <- spec$deny[nrs >= 0L]
   nrs <- nrs[nrs >= 0L]
   actions <- rep(sc_actions[[spec$action]], length(nrs))
   errnos <- rep(spec$errno, length(nrs))
@@ -106,14 +105,12 @@ install_filter <- function(spec, strict) {
   # falls back to clone(), whose flags the filter can inspect (clone3 passes
   # them in memory, out of a filter's reach). Any other answer would break
   # thread and process creation.
-  is_clone3 <- present == "clone3"
+  is_clone3 <- names == "clone3"
   actions[is_clone3] <- sc_actions[["errno"]]
   errnos[is_clone3] <- .Call(C_errno_value, "ENOSYS")
   # Denying unshare is meant to deny new namespaces; clone() can create them
-  # too, so refuse clone() with any CLONE_NEW* flag as well.
+  # too, so the filter also refuses clone() with any CLONE_NEW* flag.
   clone_ns <- "unshare" %in% spec$deny
-  # Argument rules come first: a call they do not match falls through to
-  # the plain deny list.
   args <- rep(-1L, length(nrs))
   negates <- rep(0L, length(nrs))
   vals <- vector("list", length(nrs))
@@ -121,6 +118,7 @@ install_filter <- function(spec, strict) {
   arg_rule <- function(name, arg, values, negate, errno_name) {
     nr <- .Call(C_sc_lookup, name)
     if (nr < 0L) return(FALSE)
+    names <<- c(name, names)
     nrs <<- c(nr, nrs)
     actions <<- c(sc_actions[["errno"]], actions)
     errnos <<- c(.Call(C_errno_value, errno_name), errnos)
@@ -139,8 +137,10 @@ install_filter <- function(spec, strict) {
     fam <- vapply(spec$socket_families, function(f) .Call(C_af_value, f), integer(1))
     if (arg_rule("socket", 0L, fam[!is.na(fam)], TRUE, "EAFNOSUPPORT"))
       extra <- c(extra, paste("sockets limited to", paste(spec$socket_families, collapse = ", ")))
-    if (.Call(C_sc_lookup, "socketcall") >= 0L) {
-      nrs <- c(nrs, .Call(C_sc_lookup, "socketcall"))
+    sc_nr <- .Call(C_sc_lookup, "socketcall")
+    if (sc_nr >= 0L) {
+      names <- c(names, "socketcall")
+      nrs <- c(nrs, sc_nr)
       actions <- c(actions, sc_actions[["errno"]])
       errnos <- c(errnos, .Call(C_errno_value, "EPERM"))
       args <- c(args, -1L)
@@ -152,6 +152,66 @@ install_filter <- function(spec, strict) {
     if (arg_rule("personality", 0L, sc_personalities, TRUE, "EPERM"))
       extra <- c(extra, "personality locked")
   }
+  list(name = names, nr = nrs, action = actions, errno = errnos, arg = args, negate = negates,
+       vals = vals, absent = absent, extra = extra, clone_ns = clone_ns)
+}
+
+#' The seccomp filter a policy produces
+#'
+#' Lists the rules the `syscalls()` layer of a policy installs on this
+#' architecture, in the order the filter checks them, like 'libseccomp''s
+#' `seccomp_export_pfc()`. Every filter also starts by killing calls made for
+#' another architecture (and, on x86_64, x32 calls), and allows any call no
+#' rule matches.
+#'
+#' @param p A [policy()] with a `syscalls()` layer.
+#' @return A data frame with one row per rule: `call`, its number `nr` on
+#'   this architecture, the `condition` on its arguments (empty when every
+#'   call is matched), and the `result` (`"errno EPERM"`, `"kill"`, ...).
+#'   Calls that do not exist on this architecture are listed in the
+#'   attribute `absent`. Empty off Linux.
+#' @export
+#' @examples
+#' seccomp_rules(preset("numeric"))
+seccomp_rules <- function(p) {
+  check_policy(p)
+  if (is.null(p$syscalls)) stop("the policy has no syscalls() layer", call. = FALSE)
+  empty <- data.frame(call = character(), nr = integer(), condition = character(),
+                      result = character(), stringsAsFactors = FALSE)
+  if (!is_linux()) return(empty)
+  fr <- filter_rules(p$syscalls)
+  errno_name <- function(e) {
+    known <- c("EPERM", "EACCES", "ENOSYS", "EINVAL", "EAFNOSUPPORT", "EIO", "EAGAIN", "ENOMEM")
+    vals <- vapply(known, function(k) .Call(C_errno_value, k), integer(1))
+    if (e %in% vals) known[match(e, vals)] else paste("errno", e)
+  }
+  result <- vapply(seq_along(fr$nr), function(i) {
+    a <- names(sc_actions)[match(fr$action[i], sc_actions)]
+    if (a == "errno") paste("errno", errno_name(fr$errno[i])) else a
+  }, character(1))
+  condition <- vapply(seq_along(fr$nr), function(i) {
+    if (fr$arg[i] < 0L) return("")
+    v <- paste(sprintf("0x%x", as.numeric(fr$vals[[i]])), collapse = ", ")
+    sprintf("arg%d %s {%s}", fr$arg[i], if (fr$negate[i] == 1L) "not in" else "in", v)
+  }, character(1))
+  out <- data.frame(call = fr$name, nr = fr$nr, condition = condition, result = result,
+                    stringsAsFactors = FALSE)
+  if (fr$clone_ns && .Call(C_sc_lookup, "clone") >= 0L)
+    out <- rbind(data.frame(call = "clone", nr = .Call(C_sc_lookup, "clone"),
+                            condition = "flags include CLONE_NEW*", result = "errno EPERM",
+                            stringsAsFactors = FALSE), out)
+  structure(out, absent = fr$absent)
+}
+
+install_filter <- function(spec, strict) {
+  if (!is_linux()) {
+    if (strict) stop("seccomp is only available on Linux", call. = FALSE)
+    return(list(status = "skipped", detail = "seccomp is only available on Linux", tsync = FALSE))
+  }
+  fr <- filter_rules(spec)
+  nrs <- fr$nr; actions <- fr$action; errnos <- fr$errno
+  args <- fr$arg; negates <- fr$negate; vals <- fr$vals
+  absent <- fr$absent; extra <- fr$extra; clone_ns <- fr$clone_ns
   rc <- .Call(C_sc_install, nrs, as.integer(actions), as.integer(errnos), as.integer(args),
               as.integer(negates), vals, clone_ns)
   if (rc[[1]] == -.Call(C_errno_value, "ENOTSUP")) {

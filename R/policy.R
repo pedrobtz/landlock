@@ -34,6 +34,8 @@
 #'   Calling `syscalls()` again adds to the list.
 #' * `caps()`: drop every capability except `keep` and set `no_new_privs`;
 #'   see [caps_drop_all()].
+#' * `umask()`: the file mode creation mask of the child, so that files it
+#'   creates get the intended permissions.
 #' * `deny_write_execute()`: no memory mapping may become both writable and
 #'   executable (Linux 6.3, `PR_SET_MDWE`), which stops code injected into
 #'   writable memory from running. Breaks just-in-time compilers (V8, LLVM);
@@ -64,7 +66,7 @@ policy <- function(best_effort = TRUE, log = NULL) {
 new_policy <- function(best_effort = TRUE, log = NULL) {
   structure(list(fs = NULL, fs_tmp = FALSE, fs_missing = "error", net = NULL, scope = NULL,
                  limits = NULL, ids = NULL, apparmor = NULL, syscalls = NULL, caps = NULL,
-                 mdwe = FALSE,
+                 mdwe = FALSE, umask = NULL,
                  best_effort = best_effort, log = log),
             class = "lk_policy")
 }
@@ -203,6 +205,19 @@ resolve_id <- function(x, kind) {
 }
 
 #' @rdname policy
+#' @param mask File mode creation mask, as for [Sys.umask()], for example
+#'   `"077"` so that every file the child creates is private.
+#' @export
+umask <- function(p, mask) {
+  check_policy(p)
+  mode <- if (length(mask) == 1L) tryCatch(as.octmode(mask), error = function(e) NA) else NA
+  if (is.na(mode) || mode > as.octmode("777"))
+    stop("umask(): mask must be an octal mode such as \"077\"", call. = FALSE)
+  p$umask <- format(mode)
+  p
+}
+
+#' @rdname policy
 #' @export
 deny_write_execute <- function(p) {
   check_policy(p)
@@ -300,6 +315,7 @@ print.lk_policy <- function(x, ...) {
         if (length(extra)) paste0("; ", paste(extra, collapse = "; ")), "\n")
   }
   if (isTRUE(x$mdwe)) cat("  memory    no writable and executable mappings\n")
+  if (!is.null(x$umask)) cat("  umask    ", x$umask, "\n")
   if (!is.null(x$caps)) cat("  caps      keep", if (length(x$caps$keep)) paste(x$caps$keep, collapse = ", ") else "none", "\n")
   invisible(x)
 }
