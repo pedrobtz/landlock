@@ -4,9 +4,21 @@
 \name{landlock-package}
 \alias{landlock}
 \alias{landlock-package}
-\title{landlock: Process Confinement with 'Landlock', 'seccomp' and Capabilities}
+\title{landlock: process confinement for R}
 \description{
-Evaluate R expressions or run programs in a kernel-enforced sandbox. Builds on 'Landlock' \url{https://landlock.io/} (filesystem and TCP rules), 'seccomp-bpf' (system call filters), capability dropping and resource limits, without external libraries. Degrades gracefully with a report when a feature is unavailable. A drop-in replacement for the 'unix' package: every function it exports is provided with the same name and arguments.
+Evaluate R expressions or run programs in a kernel-enforced sandbox, and
+use every function of the 'unix' package under the same name.
+}
+\details{
+Three execution models share one \code{\link[=policy]{policy()}}:
+\itemize{
+\item \code{\link[=eval_safe]{eval_safe()}} forks, restricts the child and evaluates R there;
+\item \code{\link[=run]{run()}} forks, restricts the child and executes a program;
+\item \code{\link[=confine]{confine()}} restricts the current R process, irreversibly.
+}
+
+\code{\link[=status]{status()}} reports what the running kernel offers; every enforcement
+returns a report of the layers it applied or skipped (\code{\link[=last_report]{last_report()}}).
 }
 \seealso{
 Useful links:

@@ -36,7 +36,7 @@ Goals
    Vendored uapi constants only (§10).
 5. Linux-first; rlimits + timeout work everywhere POSIX; confinement layers are
    Linux-only and degrade with a report.
-6. Drop-in for `unix`. The 31 exports of `unix` 1.6.0 are part of the public
+6. Drop-in for `unix`. The 32 exports of `unix` 1.6.0 are part of the public
    API from 0.1.0, with `unix`'s own test suite ported and passing (§15). A
    user who replaces `unix` with `landlock` and changes nothing else must see
    no difference; the new layers are opt-in through `policy`.
@@ -425,19 +425,26 @@ longer read "terminated by signal" as failure; see §6.3 for the discriminator.
 ### 6.1 Policy object
 
 ```r
-p <- policy() |>
+p <- policy(best_effort = TRUE, log = NULL) |>
   fs(read  = c("/usr", "/etc/R", "/etc/ld.so.cache", .libPaths()),
      write = tempdir(),
      exec  = c("/usr/lib/R", "/usr/bin")) |>
-  net("none")                                  # "none" | "tcp" | list(bind=, connect=)
-  syscalls(deny = c(preset("dangerous"), "execve"), action = "errno") |>
-  caps(drop = "all") |>
-  namespaces("user", "mount", "net") |>
-  mounts(tmpfs = "/tmp", bind_ro = list("/usr" = "/usr")) |>
+  net(bind = integer(), connect = 443) |>     # calling net() at all mediates TCP
+  scope(signal = TRUE, abstract_unix = TRUE) |>
+  syscalls(deny = c(preset("dangerous"), "execve"), action = "errno") |>   # 0.1.0 Stage 4
+  caps(keep = character()) |>                                               # 0.1.0 Stage 4
   limits(memory = "1g", pids = 32, cpu = 60, fsize = "100m", nofile = 256) |>
   ids(uid = NULL, gid = NULL) |>
-  options(timeout = 30, best_effort = TRUE, log = FALSE)
+  apparmor("my-profile")
 ```
+
+There is no `options()` verb: it would mask `base::options()` for anyone who
+attaches the package. Best effort and logging are arguments of `policy()`;
+`timeout` belongs to `eval_safe()` and `run()`, not to the policy. Likewise
+the M5 `trace()` must be renamed (`trace_policy()`): `base::trace()` exists.
+`fs()` has `handle_fs` semantics: `fs()` with no paths denies the whole
+filesystem, no `fs()` call leaves it alone. Limits are ceilings: a value
+above the current hard limit keeps the hard limit instead of failing.
 
 Stored as a plain named list with class `lk_policy`; `print()` shows layers and
 which ones the current kernel can honour (`explain(p)` is `print` plus the
@@ -468,13 +475,15 @@ vectors; see §5.2.
 status()                      # list: landlock_abi, seccomp (0/1/2), no_new_privs, caps (named list of hex),
                               #   userns (max_user_namespaces, unprivileged_userns_clone, apparmor_restrict_unprivileged_userns, works),
                               #   cgroup (version, path, delegated), apparmor_enabled, kernel
-apply_policy(p, strict = FALSE)   # engine; returns lk_report (which layers applied / skipped / why)
+apply_policy(p, strict = !p$best_effort)   # engine; returns lk_report (which layers applied / skipped / why)
+last_report()                 # the report of the last eval_safe() / run() / confine() / apply_policy()
 confine(p, force = FALSE)     # apply_policy on the current process; errors if multi-threaded unless force (§17.3)
 eval_safe(expr, tmp = tempfile("fork"), std_out = stdout(), std_err = stderr(),
           timeout = 0, priority = NULL, uid = NULL, gid = NULL, rlimits = NULL,
           profile = NULL, device = pdf, policy = NULL)
 eval_fork(expr, tmp = tempfile("fork"), std_out = stdout(), std_err = stderr(), timeout = 0)
-run(cmd, args = character(), policy = NULL, timeout = 0, stdout = TRUE, stderr = TRUE, env = NULL)
+run(cmd, args = character(), policy = NULL, timeout = 0, std_out = TRUE, std_err = TRUE, env = NULL)
+                              # list(status, signal, stdout, stderr); TRUE captures into the result
 
 restrict_self(read, write, exec, tcp_bind, tcp_connect, scope = c("signal", "abstract_unix"),
          best_effort = TRUE, log = NULL)
@@ -513,32 +522,47 @@ the package's own exports, documented and tested as such (§15), living in
 ### 6.3 `eval_safe` engine
 
 ```
-parent:  pr <- pipe (result), po <- pipe (stdout), pe <- pipe (stderr)
-         pid <- .Call(C_fork)
-child:   close read ends; dup2(po[2] → 1); dup2(pe[2] → 2)
-         .Call(C_close_from, 3L, keep = c(pr[2], 1L, 2L))   # step 0 of §4
-         (optional) setpriority; options(device = device); tempdir ← tmp
-         report <- apply_policy(policy)               # may error → caught below
-         out <- tryCatch(
-                  list(value = eval(expr, envir), report = report),
-                  error = function(e) list(error = e))   # keep the condition object, not just the message
-         .Call(C_write_raw, pr[2], serialize(out, NULL))
-         .Call(C_child_exit, pr[2])                     # close, raise(SIGKILL): no finalizers, no parent on.exit
-parent:  close write ends
-         repeat .Call(C_wait_collect, pid, fds, slice_ms = 200)   # rglue loop:
-             R_CheckUserInterrupt() between slices; on interrupt kill(SIGKILL), drain, reap, rethrow
-             if elapsed > timeout → kill(SIGKILL), drain, reap, timed_out = TRUE
-         write res$bufs[[2]] to std_out, [[3]] to std_err
-         if timed_out → stop("eval_safe: timeout after N s")
-         if unserialize(res$bufs[[1]]) succeeds → normal exit (the child always ends by SIGKILL)
-             if out$error → stop(out$error) else out$value with attr(,"report")
-         else → stop("child killed by signal X before returning a result (seccomp kill? OOM?)")
+parent:  three close-on-exec pipes: result, stdout, stderr; fflush(NULL)
+         pid <- fork()
+child:   setpgid(0, 0); stdin <- /dev/null; dup2 the pipes onto 1 and 2
+         if a policy is given: lk_close_from(3, keep = result fd)       # step 0 of section 4
+         R_UnwindProtect(body, cleanup):
+           body:    child_prepare(): q() guard, TMPDIR <- tmp, sink() to /dev/fd/1 and /dev/fd/2
+                    tryCatch(apply_policy(); withVisible(eval(expr))) -> serialize(list(ok, value | error, report))
+                    write a 'P' frame on the result pipe
+           cleanup: on any jump out of the body, lk_child_exit()        # never back to the parent's toplevel
+         lk_child_exit(): fflush(NULL), close, raise(SIGKILL)
+parent:  R_UnwindProtect(loop, cleanup):
+           loop:    lk_wait_collect(slice 200 ms); stdout/stderr chunks -> callbacks as they arrive;
+                    timeout -> SIGKILL to the child's process group; R_CheckUserInterrupt()
+           cleanup: on interrupt (or an error in a callback): SIGKILL, reap, free, keep unwinding
+         reap; SIGKILL the process group (grandchildren); parse the result frames in R:
+         timed out -> error "timeout reached"; no complete 'P' frame -> error "child process has died
+         ... (signal N, name)"; else unserialize, re-raise the condition or return the value
 ```
 
-The result pipe is the discriminator, not the wait status: a complete
-serialized payload means success regardless of how the child ended; SIGKILL
-with an empty or truncated payload means timeout, seccomp `kill` or the OOM
-killer. The `_exit()` alternative and why it was rejected are in §5.6.
+Result-pipe frames: a type byte, an 8-byte native `double` length, the bytes.
+`P` is the payload; `R` is the report `run()` sends before `exec`; `X` marks
+that `run()` reached `exec()`. A truncated frame (the child died mid-write) is
+dropped. The frame stream is what tells success from death, never the wait
+status: every child ends by SIGKILL.
+
+Child robustness without R internals (the CRAN constraint behind §15's
+differences):
+- `q()` in the child would run R's cleanup, which deletes the session temp
+  directory shared with the parent. `child_prepare()` registers an `onexit`
+  finalizer that calls `lk_child_exit()`. Exit finalizers run before the temp
+  directory is removed and newest first, so it fires first. Its object must
+  stay reachable (such finalizers also run on GC); a grandchild keeps the
+  guards it inherited.
+- R-level output goes through `sink()` to `/dev/fd/1` and `/dev/fd/2` opened
+  with `raw = TRUE` (a pipe makes `file()` warn otherwise, and a warning in
+  the child reaches whatever calling handlers the parent had on the stack,
+  testthat's reporter included). This also captures output under RStudio,
+  whose console the child must not use.
+- The report is not attached to the returned value (that would alter the
+  value, cannot be put on `NULL`, and mutates environments in place); it is
+  kept for `last_report()`.
 
 Notes
 - `serialize()` materialises ALTREP vectors, so compact sequences and
@@ -547,10 +571,11 @@ Notes
   document.
 - The child must not touch graphics devices or parent connections; `unix` sets
   `options(device = pdf)`; do the same.
-- `std_out = NULL` discards; a connection receives the bytes after the child
-  exits (streaming while running is M4).
+- `std_out = NULL` or `FALSE` discards; connections, files and callbacks
+  receive output while the child runs, as in `unix`.
 - `parallel::mcfork` precedent for forking an R session: after fork the child
-  must never return into the parent's event loop; always `_exit`.
+  must never return into the parent's event loop; here `R_UnwindProtect`
+  and `lk_child_exit()` guarantee it.
 
 ---
 
@@ -779,9 +804,13 @@ URL: https://pedrobtz.github.io/landlock/, https://github.com/pedrobtz/landlock
 BugReports: https://github.com/pedrobtz/landlock/issues
 Encoding: UTF-8
 Language: en-US
-Suggests: testthat (>= 3.0.0), knitr, rmarkdown
+Depends: R (>= 4.1.0)
+Imports: grDevices, tools
+Suggests: parallel, testthat (>= 3.0.0), knitr, rmarkdown
 ```
-No Imports. `src/Makevars`: `PKG_CPPFLAGS = -I. -D_GNU_SOURCE`. Expected source
+Imports are base packages only: `tools` for the `SIGTERM` default of
+`kill()` and `grDevices` for the `pdf` default of `eval_safe(device =)`, both
+needed for formals identical to `unix`. `src/Makevars`: `PKG_CPPFLAGS = -I. -D_GNU_SOURCE`. Expected source
 tarball well under 500 KB. Namespaces and cgroups return to Title and
 Description when they ship (0.2.0). CRAN wants software names in single quotes
 and a reference for the method, hence the quoting and the URL. `inst/COPYRIGHTS`
@@ -827,7 +856,7 @@ rlimit_stack setegid seteuid setgid setpgid setpriority setuid sys_config
 user_info
 ```
 
-(`unix` 1.6.0 `NAMESPACE`, 31 exports.) For each: same name, same formals in
+(`unix` 1.6.0 `NAMESPACE`, 32 exports.) For each: same name, same formals in
 the same order with the same defaults, same return shape, same error on
 failure. `rlimit_*(cur = NULL, max = NULL)` query when both are `NULL` and set
 otherwise, returning the new limits invisibly as `unix` does; `rlimit_all()`
@@ -847,6 +876,16 @@ libapparmor's `aa_change_profile()` does internally. `eval_safe(profile=)`
 calls it in the child between steps 6 and 7 of §4. Without AppArmor the layer
 reports "skipped"; with AppArmor and an unknown profile it errors, as `unix`
 does. This is 0.1.0. The shipped `userns` profile (§11) is 0.2.0.
+
+Known differences, forced by CRAN's rule against R internals (`unix` reaches
+`R_TempDir`, `R_Interactive` and the console pointers, and enables that code
+only when its Makevars detects it is *not* running under `R CMD check`; a new
+submission must not copy that):
+- `tmp` becomes the child's `TMPDIR`, not its `tempdir()`;
+- `interactive()` in the child keeps the session's value (stdin is
+  `/dev/null`, so `readline()` returns `""`);
+- output is captured with `sink()` rather than by replacing the console.
+The ported tests change only the `tempdir()` assertion accordingly.
 
 Migration notes for `unix` users go in the `getting-started` vignette: the
 only visible differences are the extra `policy` argument on `eval_safe()`,
@@ -892,5 +931,5 @@ matter for a pure-C R package.
 9. How the forked child ends — decided: close pipes and `raise(SIGKILL)`, as `unix` does, so compiled code references no `_exit`/`exit` symbol and the first submission carries no compiled-code NOTE. Parent discriminates on the result pipe (§6.3).
 10. `eval_safe()` signature — decided: `unix`'s argument list verbatim plus `policy = NULL` appended (§6.2). The earlier draft with `policy` second broke positional compatibility.
 11. fd hygiene — decided: M1, not M4 (§11).
-12. Relationship to `unix` — decided: full replacement, all 31 exports with identical formals in 0.1.0, `unix`'s tests ported (§15). `profile=` moves from M3 to M1 because it is a `/proc` write.
+12. Relationship to `unix` — decided: full replacement, all 32 exports with identical formals in 0.1.0, `unix`'s tests ported (§15). `profile=` moves from M3 to M1 because it is a `/proc` write.
 13. CI — decided: `pedrobtz/r-actions` for everything it covers from the first commit (§12); one hand-written workflow for the no-R C harness; pkgdown stays on the r-lib template.

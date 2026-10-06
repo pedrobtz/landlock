@@ -1,0 +1,325 @@
+#' Evaluate in a forked, optionally confined, child process
+#'
+#' `eval_fork()` evaluates an expression in a temporary fork of the R session
+#' and returns its value, without side effects on the session. `eval_safe()`
+#' adds error handling, graphics isolation, resource limits, user switching,
+#' an AppArmor profile and, through `policy`, every layer of a [policy()].
+#' Both keep the arguments of the 'unix' package functions of the same name,
+#' in the same order; `policy` is added at the end.
+#'
+#' The child is killed when `timeout` seconds of wall-clock time pass, or
+#' when the session is interrupted. Errors in the child are raised again in
+#' the session with their original class. Output the child writes is
+#' forwarded as it arrives.
+#'
+#' Some software is not fork-safe and cannot be used in the child once the
+#' session has loaded it (Java, and on macOS anything built on
+#' CoreFoundation, including a `libcurl` built against SecureTransport). The
+#' same holds for [parallel::mcparallel()].
+#'
+#' @section Output streams:
+#' `std_out` and `std_err` may be `TRUE` (the session's [stdout()] and
+#' [stderr()]), `FALSE` or `NULL` (discard), a file name, a connection, or a
+#' function of one argument that receives each chunk as a raw vector.
+#'
+#' @section Differences from 'unix':
+#' The 'unix' package switches [tempdir()] and [interactive()] inside the
+#' child by writing to R internals, which a package on CRAN may not do. Here
+#' `tmp` becomes the child's `TMPDIR` (seen by [Sys.getenv()], child
+#' processes and C libraries) while [tempdir()] keeps the session's value,
+#' and [interactive()] keeps the session's value; standard input is
+#' `/dev/null`. Output is captured with [sink()], which also works under
+#' front-ends such as RStudio.
+#'
+#' @param expr Expression to evaluate.
+#' @param tmp Temporary directory for the child; becomes its `TMPDIR`.
+#' @param std_out,std_err Where the child's output goes; see *Output streams*.
+#' @param timeout Wall-clock limit in seconds; `0` for none.
+#' @param priority Scheduling priority of the child; see [setpriority()].
+#' @param uid,gid User and group to switch to (root only), as ids or names.
+#' @param rlimits Named vector or list of resource limits, as in 'unix', for
+#'   example `c(cpu = 60, fsize = 1e6)`. Each sets both the soft and the hard
+#'   limit; zero and `NA` are ignored.
+#' @param profile AppArmor profile for the child.
+#' @param device Graphics device to use in the child.
+#' @param policy A [policy()] applied in the child before `expr` runs. When
+#'   given, the child also closes every file descriptor it inherited except
+#'   its standard streams, because Landlock does not revoke files that are
+#'   already open.
+#' @return The value of `expr`, visible or invisible as in the child. The
+#'   report of the applied policy is available as [last_report()].
+#' @export
+#' @examples
+#' eval_safe(rnorm(5))
+#'
+#' # errors keep their class
+#' tryCatch(eval_safe(stop("oh no")), error = function(e) conditionMessage(e))
+#'
+#' # a wall-clock limit, enforced even inside C code
+#' try(eval_safe(Sys.sleep(10), timeout = 1))
+eval_safe <- function(expr, tmp = tempfile("fork"), std_out = stdout(), std_err = stderr(),
+                      timeout = 0, priority = NULL, uid = NULL, gid = NULL, rlimits = NULL,
+                      profile = NULL, device = pdf, policy = NULL) {
+  orig_expr <- substitute(expr)
+  env <- parent.frame()
+  p <- merge_unix_args(policy, rlimits = rlimits, uid = uid, gid = gid, profile = profile)
+  child <- function() {
+    tryCatch({
+      if (length(priority)) setpriority(priority)
+      report <- if (!is.null(p)) apply_policy(p) else NULL
+      if (length(device)) options(device = device)
+      graphics.off()
+      options(menu.graphics = FALSE)
+      res <- withVisible(eval(orig_expr, env))
+      serialize(list(ok = TRUE, value = res$value, visible = res$visible, report = report), NULL)
+    }, error = function(e) {
+      serialize(list(ok = FALSE, error = e), NULL)
+    }, finally = graphics.off())
+  }
+  out <- fork_call(child, tmp = tmp, timeout = timeout, std_out = std_out, std_err = std_err,
+                   close_fds = !is.null(p))
+  if (!is.null(out$report)) .state$last_report <- out$report
+  if (!isTRUE(out$ok)) base::stop(out$error)
+  if (isTRUE(out$visible)) out$value else invisible(out$value)
+}
+
+#' @rdname eval_safe
+#' @export
+eval_fork <- function(expr, tmp = tempfile("fork"), std_out = stdout(), std_err = stderr(),
+                      timeout = 0) {
+  orig_expr <- substitute(expr)
+  env <- parent.frame()
+  child <- function() {
+    res <- tryCatch(list(ok = TRUE, value = eval(orig_expr, env)),
+                    error = function(e) list(ok = FALSE, error = e))
+    serialize(res, NULL)
+  }
+  out <- fork_call(child, tmp = tmp, timeout = timeout, std_out = std_out, std_err = std_err,
+                   close_fds = FALSE)
+  if (!isTRUE(out$ok)) base::stop(out$error)
+  out$value
+}
+
+#' Run a program in a confined child process
+#'
+#' Forks, applies `policy` in the child, closes every inherited file
+#' descriptor except the standard streams, and executes `cmd` (looked up in
+#' `PATH`). Standard input is `/dev/null`.
+#'
+#' @param cmd Program to run.
+#' @param args Character vector of arguments.
+#' @param policy A [policy()], or `NULL` for none. The program needs
+#'   permission to execute itself and to read its shared libraries; see
+#'   [preset()].
+#' @param timeout Wall-clock limit in seconds; `0` for none.
+#' @param std_out,std_err `TRUE` to capture the output in the result, `FALSE`
+#'   or `NULL` to discard it, or a file name, connection or function as in
+#'   [eval_safe()].
+#' @param env Named character vector of environment variables to set for the
+#'   program.
+#' @return A list with `status` (exit status, `NA` if the program was killed
+#'   by a signal), `signal` (the signal, or `NA`), and `stdout` and `stderr`
+#'   (raw vectors when captured, else `NULL`). The report of the applied
+#'   policy is available as [last_report()].
+#' @export
+#' @examples
+#' res <- run("echo", "hello")
+#' rawToChar(res$stdout)
+run <- function(cmd, args = character(), policy = NULL, timeout = 0, std_out = TRUE,
+                std_err = TRUE, env = NULL) {
+  stopifnot(is.character(cmd), length(cmd) == 1L, is.character(args))
+  if (!is.null(policy)) check_policy(policy)
+  if (length(env) && (is.null(names(env)) || any(!nzchar(names(env)))))
+    stop("env must be a named character vector", call. = FALSE)
+  captured <- new.env(parent = emptyenv())
+  sink_for <- function(x, which) {
+    if (isTRUE(x)) {
+      captured[[which]] <- list()
+      function(chunk) captured[[which]][[length(captured[[which]]) + 1L]] <- chunk
+    } else if (isFALSE(x)) NULL else x
+  }
+  child <- function() {
+    res <- tryCatch({
+      report <- if (!is.null(policy)) apply_policy(policy) else NULL
+      .Call(C_write_frame, "R", serialize(report, NULL))
+      if (length(env)) do.call(Sys.setenv, as.list(env))
+      simpleError(.Call(C_exec, cmd, args))
+    }, error = function(e) e)
+    serialize(list(ok = FALSE, error = res), NULL)
+  }
+  res <- fork_call(child, tmp = NULL, timeout = timeout,
+                   std_out = sink_for(std_out, "out"), std_err = sink_for(std_err, "err"),
+                   close_fds = TRUE, capture_r_output = FALSE, mode = "run")
+  joined <- function(which) if (is.null(captured[[which]])) NULL else do.call(c, c(list(raw()), captured[[which]]))
+  list(status = res$exit_code, signal = res$signal, stdout = joined("out"), stderr = joined("err"))
+}
+
+# ---- internals -----------------------------------------------------------
+
+# eval_safe()'s unix arguments, folded into the policy.
+merge_unix_args <- function(policy, rlimits, uid, gid, profile) {
+  if (!is.null(policy)) check_policy(policy)
+  if (is.null(policy) && !length(rlimits) && !length(uid) && !length(gid) && !length(profile))
+    return(NULL)
+  p <- policy %||% new_policy()
+  if (length(rlimits)) {
+    lims <- unix_rlimits(rlimits)
+    old <- p$limits %||% list()
+    old[names(lims)] <- lims
+    p$limits <- old
+  }
+  if (length(uid) || length(gid))
+    p$ids <- list(uid = resolve_id(uid, "user"), gid = resolve_id(gid, "group"))
+  if (length(profile)) {
+    stopifnot(is.character(profile), length(profile) == 1L)
+    p$apparmor <- profile
+  }
+  p
+}
+
+# std_out / std_err -> list(fun = callback or NULL, close = connection to
+# close afterwards or NULL), as in 'unix'.
+output_callback <- function(x, default) {
+  if (is.null(x) || isFALSE(x)) return(list(fun = NULL, close = NULL))
+  if (isTRUE(x) || identical(x, "")) x <- default
+  close <- NULL
+  if (is.character(x)) {
+    x <- file(normalizePath(x, mustWork = FALSE))
+  }
+  if (inherits(x, "connection")) {
+    con <- x
+    if (!isOpen(con)) {
+      open(con, "wb")
+      close <- con
+    }
+    fun <- if (identical(summary(con)$text, "text")) {
+      function(chunk) {
+        cat(rawToChar(chunk), file = con)
+        flush(con)
+      }
+    } else {
+      function(chunk) {
+        writeBin(chunk, con = con)
+        flush(con)
+      }
+    }
+    return(list(fun = fun, close = close))
+  }
+  if (is.function(x)) {
+    if (!length(formals(x))) stop("Function std_out must take at least one argument", call. = FALSE)
+    return(list(fun = x, close = NULL))
+  }
+  stop("std_out and std_err must be TRUE, FALSE, a file name, a connection or a function",
+       call. = FALSE)
+}
+
+# Fork, run child() there, collect. Returns the child's unserialized
+# result (eval mode) or the process outcome (run mode).
+fork_call <- function(child, tmp, timeout, std_out, std_err, close_fds,
+                      capture_r_output = TRUE, mode = c("eval", "run")) {
+  mode <- match.arg(mode)
+  out <- output_callback(std_out, stdout())
+  err <- output_callback(std_err, stderr())
+  on.exit({
+    if (!is.null(out$close)) close(out$close)
+    if (!is.null(err$close)) close(err$close)
+  })
+  if (length(timeout)) {
+    stopifnot(is.numeric(timeout), !is.na(timeout[1]))
+    timeout <- as.double(timeout[1])
+  } else {
+    timeout <- 0
+  }
+  if (!is.null(tmp)) {
+    if (!dir.exists(tmp)) dir.create(tmp, recursive = TRUE)
+    tmp <- normalizePath(tmp)
+  }
+  wrapped <- function() {
+    child_prepare(tmp, capture_r_output)
+    on.exit(child_flush())
+    child()
+  }
+  res <- .Call(C_fork_eval, wrapped, timeout, out$fun, err$fun, isTRUE(close_fds))
+  frames <- parse_frames(res$buffer)
+  types <- vapply(frames, `[[`, character(1), "type")
+  if (isTRUE(res$timed_out))
+    stop(sprintf("timeout reached (%s sec)", format(timeout)), call. = FALSE)
+
+  if (mode == "run") {
+    if ("R" %in% types) {
+      report <- unserialize(frames[[which(types == "R")[1]]]$body)
+      if (!is.null(report)) .state$last_report <- report
+    }
+    if ("P" %in% types) {
+      outcome <- unserialize(frames[[which(types == "P")[1]]]$body)
+      base::stop(outcome$error)
+    }
+    if (!"X" %in% types) stop(child_died_message(res), call. = FALSE)
+    return(res)
+  }
+
+  if (!"P" %in% types) stop(child_died_message(res), call. = FALSE)
+  unserialize(frames[[which(types == "P")[1]]]$body)
+}
+
+# Result-pipe frames: type byte, 8-byte native double length, bytes. A
+# truncated frame (the child died while writing) is dropped.
+parse_frames <- function(buf) {
+  frames <- list()
+  n <- length(buf)
+  i <- 1L
+  while (i + 8L <= n) {
+    type <- rawToChar(buf[i])
+    len <- readBin(buf[(i + 1L):(i + 8L)], "double", size = 8L)
+    end <- i + 8L + len
+    if (!is.finite(len) || len < 0 || end > n) break
+    body <- if (len > 0) buf[(i + 9L):end] else raw()
+    frames[[length(frames) + 1L]] <- list(type = type, body = body)
+    i <- as.integer(end + 1)
+  }
+  frames
+}
+
+child_died_message <- function(res) {
+  sig <- res$signal
+  if (!is.na(sig)) {
+    hint <- if (sig == SIGKILL) {
+      "; for example the out-of-memory killer, a seccomp kill action, or q()"
+    } else ""
+    return(sprintf("child process has died before returning a result (signal %d, %s%s)",
+                   sig, strsignal(sig), hint))
+  }
+  if (!is.na(res$exit_code))
+    return(sprintf("child process has died before returning a result (exit status %d)", res$exit_code))
+  "child process has died before returning a result"
+}
+
+# In the forked child, before any user code.
+child_prepare <- function(tmp, capture_r_output) {
+  # A normal R exit (q(), quit()) would run R's cleanup, which deletes the
+  # session's temporary directory, shared with the parent. Exit finalizers
+  # run before that cleanup, newest first: this one ends the child there.
+  # The guard must stay reachable: such a finalizer also runs when its
+  # object is garbage collected. A grandchild keeps the guards it inherited.
+  guard <- new.env(parent = emptyenv())
+  reg.finalizer(guard, function(e) .Call(C_child_abort), onexit = TRUE)
+  .state$guards <- c(.state$guards, guard)
+  if (!is.null(tmp)) Sys.setenv(TMPDIR = tmp, TMP = tmp, TEMP = tmp)
+  .state$sinks <- NULL
+  # Route R-level output (cat, print, message, Rprintf) to the pipes on
+  # fds 1 and 2 through sink(), not R's console, which a front-end such as
+  # RStudio owns.
+  if (capture_r_output && file.exists("/dev/fd/1") && file.exists("/dev/fd/2")) {
+    out <- tryCatch(file("/dev/fd/1", open = "w", raw = TRUE), error = function(e) NULL)
+    err <- tryCatch(file("/dev/fd/2", open = "w", raw = TRUE), error = function(e) NULL)
+    if (!is.null(out) && !is.null(err)) {
+      sink(out)
+      sink(err, type = "message")
+      .state$sinks <- list(out, err)
+    }
+  }
+}
+
+child_flush <- function() {
+  for (con in .state$sinks) try(flush(con), silent = TRUE)
+}
