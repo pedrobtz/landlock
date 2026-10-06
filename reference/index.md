@@ -7,6 +7,10 @@
 - [`apply_policy()`](https://pedrobtz.github.io/landlock/reference/apply_policy.md)
   [`confine()`](https://pedrobtz.github.io/landlock/reference/apply_policy.md)
   : Apply a policy
+- [`caps_drop_all()`](https://pedrobtz.github.io/landlock/reference/caps_drop_all.md)
+  [`caps_keep()`](https://pedrobtz.github.io/landlock/reference/caps_drop_all.md)
+  [`no_new_privs()`](https://pedrobtz.github.io/landlock/reference/caps_drop_all.md)
+  : Capabilities and no_new_privs
 - [`chroot()`](https://pedrobtz.github.io/landlock/reference/chroot.md)
   : Change root directory
 - [`eval_safe()`](https://pedrobtz.github.io/landlock/reference/eval_safe.md)
@@ -21,7 +25,9 @@
   [`limits()`](https://pedrobtz.github.io/landlock/reference/policy.md)
   [`ids()`](https://pedrobtz.github.io/landlock/reference/policy.md)
   [`apparmor()`](https://pedrobtz.github.io/landlock/reference/policy.md)
-  : Build a confinement policy
+  [`syscalls()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+  [`caps()`](https://pedrobtz.github.io/landlock/reference/policy.md) :
+  Build a confinement policy
 - [`preset()`](https://pedrobtz.github.io/landlock/reference/preset.md)
   : Ready-made policies
 - [`getuid()`](https://pedrobtz.github.io/landlock/reference/process.md)
@@ -55,6 +61,10 @@
   : Resource limits
 - [`run()`](https://pedrobtz.github.io/landlock/reference/run.md) : Run
   a program in a confined child process
+- [`seccomp_deny()`](https://pedrobtz.github.io/landlock/reference/seccomp_deny.md)
+  [`seccomp_status()`](https://pedrobtz.github.io/landlock/reference/seccomp_deny.md)
+  [`syscall_table()`](https://pedrobtz.github.io/landlock/reference/seccomp_deny.md)
+  : System call filters
 - [`setids()`](https://pedrobtz.github.io/landlock/reference/setids.md)
   : Switch user and group
 - [`status()`](https://pedrobtz.github.io/landlock/reference/status.md)

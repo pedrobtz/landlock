@@ -36,6 +36,10 @@ limits(
 ids(p, uid = NULL, gid = NULL)
 
 apparmor(p, profile)
+
+syscalls(p, deny, action = c("errno", "kill", "log", "trap"), errno = "EPERM")
+
+caps(p, keep = character())
 ```
 
 ## Arguments
@@ -79,6 +83,20 @@ apparmor(p, profile)
 
   Name of an AppArmor profile.
 
+- deny:
+
+  Character vector of system call names.
+
+- action, errno:
+
+  See
+  [`seccomp_deny()`](https://pedrobtz.github.io/landlock/reference/seccomp_deny.md).
+
+- keep:
+
+  Capability names to keep; see
+  [`caps_keep()`](https://pedrobtz.github.io/landlock/reference/caps_drop_all.md).
+
 ## Value
 
 An object of class `lk_policy`.
@@ -115,6 +133,16 @@ Layers and what they map to:
 - `apparmor()`: change to an AppArmor profile, as
   `unix::eval_safe(profile =)` does.
 
+- `syscalls()`: a seccomp filter denying the listed system calls; see
+  [`seccomp_deny()`](https://pedrobtz.github.io/landlock/reference/seccomp_deny.md)
+  for the actions and
+  [`preset()`](https://pedrobtz.github.io/landlock/reference/preset.md)
+  for ready-made sets. Calling `syscalls()` again adds to the list.
+
+- `caps()`: drop every capability except `keep` and set `no_new_privs`;
+  see
+  [`caps_drop_all()`](https://pedrobtz.github.io/landlock/reference/caps_drop_all.md).
+
 ## See also
 
 [`preset()`](https://pedrobtz.github.io/landlock/reference/preset.md)
@@ -132,7 +160,7 @@ p <- policy() |>
 p
 #> <landlock policy> best effort 
 #>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library
-#>   fs write  /tmp/Rtmp7UXASl
+#>   fs write  /tmp/RtmpaSV0p3
 #>   tcp       bind: none; connect: none
 #>   limits    as=2 GiB, nofile=256 
 ```

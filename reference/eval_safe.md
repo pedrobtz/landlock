@@ -61,7 +61,11 @@ eval_fork(
 
 - uid, gid:
 
-  User and group to switch to (root only), as ids or names.
+  User and group to switch to (root only), as ids or names. After the
+  switch the child can only read what that user can read, including the
+  R libraries it lazy-loads code from: landlock's own functions are
+  loaded beforehand, but functions of other packages used for the first
+  time in the child must be readable by that user.
 
 - rlimits:
 

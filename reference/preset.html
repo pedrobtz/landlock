@@ -63,30 +63,46 @@ first library path), <code>port</code> for <code>"plumber"</code> (default 8000)
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A <code><a href="policy.html">policy()</a></code>.</p>
+    <p>A <code><a href="policy.html">policy()</a></code>, or for a system call set a character vector.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-
-<ul><li><p><code>"numeric"</code>: evaluate R code that only computes. Reads R, the
+    <p>Policies:</p><ul><li><p><code>"numeric"</code>: evaluate R code that only computes. Reads R, the
 installed packages and system libraries; reads and writes only the
 session's temporary directory; may execute nothing; no TCP; signals and abstract
-sockets scoped to the sandbox.</p></li>
+sockets scoped to the sandbox; the <code>"dangerous"</code>, <code>"no_exec"</code> and
+<code>"no_net"</code> system calls denied; all capabilities dropped.</p></li>
 <li><p><code>"install"</code>: install a package from source. As <code>"numeric"</code>, plus
 executing the compiler toolchain (and the dynamic loader, which the
-kernel opens for execution too) and writing to <code>lib</code>.</p></li>
-<li><p><code>"plumber"</code>: serve HTTP. As <code>"numeric"</code>, plus binding to <code>port</code>.</p></li>
-</ul><p>Paths that do not exist on this system are left out.</p>
+kernel opens for execution too) and writing to <code>lib</code>; only the
+<code>"dangerous"</code> calls are denied.</p></li>
+<li><p><code>"plumber"</code>: serve HTTP. As <code>"numeric"</code>, plus binding to <code>port</code>; the
+<code>"dangerous"</code> and <code>"no_exec"</code> calls are denied.</p></li>
+</ul><p>System call sets, character vectors for <code><a href="policy.html">syscalls()</a></code> and
+<code><a href="seccomp_deny.html">seccomp_deny()</a></code>:</p><ul><li><p><code>"dangerous"</code>: calls a sandboxed R process has no use for and that
+widen the kernel's attack surface or escape a sandbox: <code>ptrace</code>,
+<code>process_vm_readv</code>, mounting, namespaces, keyrings, <code>bpf</code>,
+<code>perf_event_open</code>, <code>io_uring</code>, <code>userfaultfd</code>, kernel modules, <code>kexec</code>,
+<code>reboot</code>, swap, clock setting, <code>open_by_handle_at</code>, NUMA policy calls,
+and <code>landlock_*</code> and <code>seccomp</code> themselves (the sandbox is complete by
+the time the filter is installed). Never <code>set*id</code> or <code>capset</code>, which
+the later steps of <code><a href="apply_policy.html">apply_policy()</a></code> use.</p></li>
+<li><p><code>"no_exec"</code>: <code>execve</code> and <code>execveat</code> (<code><a href="https://rdrr.io/r/base/system.html" class="external-link">system()</a></code> stops working).</p></li>
+<li><p><code>"no_net"</code>: socket creation and use. Also stops DNS, and is the only way
+to stop UDP without a network namespace.</p></li>
+</ul><p>Paths that do not exist on this system are left out of the policies.</p>
     </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu">preset</span><span class="op">(</span><span class="st">"numeric"</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;landlock policy&gt; best effort </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /lib, /lib64, /opt/R, /etc/ld.so.cache, /etc/localtime, /etc/timezone, /etc/os-release, /dev/urandom, /dev/null, /tmp/Rtmp7UXASl, /dev/null</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   fs write  /tmp/Rtmp7UXASl, /dev/null</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /lib, /lib64, /opt/R, /etc/ld.so.cache, /etc/localtime, /etc/timezone, /etc/os-release, /dev/urandom, /dev/null, /tmp/RtmpaSV0p3, /dev/null</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   fs write  /tmp/RtmpaSV0p3, /dev/null</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   tcp       bind: none; connect: none</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   scope     signal, abstract_unix  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   syscalls  deny 72 calls, action errno </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   caps      keep none </span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

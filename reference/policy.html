@@ -71,7 +71,11 @@ until the policy is passed to <code><a href="eval_safe.html">eval_safe()</a></co
 <span></span>
 <span><span class="fu">ids</span><span class="op">(</span><span class="va">p</span>, uid <span class="op">=</span> <span class="cn">NULL</span>, gid <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">apparmor</span><span class="op">(</span><span class="va">p</span>, <span class="va">profile</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu">apparmor</span><span class="op">(</span><span class="va">p</span>, <span class="va">profile</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">syscalls</span><span class="op">(</span><span class="va">p</span>, <span class="va">deny</span>, action <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"errno"</span>, <span class="st">"kill"</span>, <span class="st">"log"</span>, <span class="st">"trap"</span><span class="op">)</span>, errno <span class="op">=</span> <span class="st">"EPERM"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">caps</span><span class="op">(</span><span class="va">p</span>, keep <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">character</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -119,6 +123,18 @@ ceilings; <code>NULL</code> leaves a resource alone.</p></dd>
 <dt id="arg-profile">profile<a class="anchor" aria-label="anchor" href="#arg-profile"></a></dt>
 <dd><p>Name of an AppArmor profile.</p></dd>
 
+
+<dt id="arg-deny">deny<a class="anchor" aria-label="anchor" href="#arg-deny"></a></dt>
+<dd><p>Character vector of system call names.</p></dd>
+
+
+<dt id="arg-action-errno">action, errno<a class="anchor" aria-label="anchor" href="#arg-action-errno"></a></dt>
+<dd><p>See <code><a href="seccomp_deny.html">seccomp_deny()</a></code>.</p></dd>
+
+
+<dt id="arg-keep">keep<a class="anchor" aria-label="anchor" href="#arg-keep"></a></dt>
+<dd><p>Capability names to keep; see <code><a href="caps_drop_all.html">caps_keep()</a></code>.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -148,6 +164,11 @@ strings such as <code>"512m"</code> or <code>"2g"</code>.</p></li>
 every other layer except the resource limits.</p></li>
 <li><p><code>apparmor()</code>: change to an AppArmor profile, as <code>unix::eval_safe(profile =)</code>
 does.</p></li>
+<li><p><code>syscalls()</code>: a seccomp filter denying the listed system calls; see
+<code><a href="seccomp_deny.html">seccomp_deny()</a></code> for the actions and <code><a href="preset.html">preset()</a></code> for ready-made sets.
+Calling <code>syscalls()</code> again adds to the list.</p></li>
+<li><p><code>caps()</code>: drop every capability except <code>keep</code> and set <code>no_new_privs</code>;
+see <code><a href="caps_drop_all.html">caps_drop_all()</a></code>.</p></li>
 </ul></div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -164,7 +185,7 @@ kernel offers.</p></div>
 <span class="r-in"><span><span class="va">p</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;landlock policy&gt; best effort </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   fs write  /tmp/Rtmp7UXASl</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   fs write  /tmp/RtmpaSV0p3</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   tcp       bind: none; connect: none</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   limits    as=2 GiB, nofile=256 </span>
 </code></pre></div>

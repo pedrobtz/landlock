@@ -94,7 +94,7 @@ priority (raise the value).
 getuid()
 #> [1] 1001
 getpid()
-#> [1] 6521
+#> [1] 6665
 getpriority()
 #> [1] 0
 ```

@@ -5,10 +5,11 @@
 [`run()`](https://pedrobtz.github.io/landlock/reference/run.md) and
 `confine()`: it applies the layers of a
 [`policy()`](https://pedrobtz.github.io/landlock/reference/policy.md) to
-the calling process, in the order of design.md section 4 (AppArmor,
-Landlock, user and group ids, resource limits). It is irreversible; call
-it in a child process, or use `confine()`, which adds a check for
-threads.
+the calling process, in a fixed order: AppArmor, Landlock, the
+capability bounding set, seccomp, user and group ids, the remaining
+capability sets, resource limits. Each step needs what the later ones
+take away. It is irreversible; call it in a child process, or use
+`confine()`, which adds a check for threads.
 
 ## Usage
 

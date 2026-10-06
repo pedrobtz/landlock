@@ -81,13 +81,13 @@ lower its hard limit, irreversibly. Setting `cur` above the current
 rlimit_all()
 #> $cur
 #>       as     core      cpu     data    fsize  memlock   nofile    nproc 
-#>      Inf        0      Inf      Inf      Inf  8388608    65536    63842 
+#>      Inf        0      Inf      Inf      Inf  8388608    65536    63838 
 #>    stack 
 #> 16777216 
 #> 
 #> $max
 #>      as    core     cpu    data   fsize memlock  nofile   nproc   stack 
-#>     Inf     Inf     Inf     Inf     Inf 8388608   65536   63842     Inf 
+#>     Inf     Inf     Inf     Inf     Inf 8388608   65536   63838     Inf 
 #> 
 rlimit_nofile()
 #> $cur
