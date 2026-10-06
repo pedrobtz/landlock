@@ -1,0 +1,80 @@
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "src/**"
+      - "tests/c/**"
+      - ".github/workflows/c-harness.yaml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/c/**"
+      - ".github/workflows/c-harness.yaml"
+  workflow_dispatch:
+
+name: c-harness
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+# The C core (design §3) builds and runs without R. r-actions has no
+# workflow for a no-R harness, so this is the one hand-written job in the
+# repo. Two legs on purpose: the VM runner executes as a non-root user and
+# allows user namespaces; the container executes as root and, under Docker's
+# default seccomp profile, cannot unshare(CLONE_NEWUSER). Together they are
+# the root/non-root and VM/container split design §2 and §12 ask for.
+#
+# Until tests/c/Makefile exists (roadmap Stage 1) the build steps are skipped
+# and the job passes with a notice, so the skeleton is not permanently red.
+# The `have` step is the only gate; nothing else here reads the tree.
+jobs:
+  runner:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Is the harness there yet?
+        id: have
+        run: |
+          if [ -f tests/c/Makefile ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::tests/c/Makefile not found; harness steps skipped (roadmap Stage 1)"
+          fi
+      - name: Kernel and Landlock ABI
+        run: |
+          uname -r
+          cat /sys/kernel/security/lsm 2>/dev/null || true
+      - name: Build and run as the runner user
+        if: steps.have.outputs.present == 'true'
+        run: make -C tests/c && tests/c/run
+      - name: Run as nobody
+        if: steps.have.outputs.present == 'true'
+        run: sudo -u nobody tests/c/run
+
+  container:
+    runs-on: ubuntu-24.04
+    container: ubuntu:24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Is the harness there yet?
+        id: have
+        run: |
+          if [ -f tests/c/Makefile ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::tests/c/Makefile not found; harness steps skipped (roadmap Stage 1)"
+          fi
+      - name: Toolchain
+        if: steps.have.outputs.present == 'true'
+        run: apt-get update && apt-get install -y --no-install-recommends build-essential clang
+      - name: Build and run as root (gcc)
+        if: steps.have.outputs.present == 'true'
+        run: make -C tests/c && tests/c/run
+      - name: Build with clang -std=gnu23 -pedantic
+        if: steps.have.outputs.present == 'true'
+        run: make -C tests/c clean && make -C tests/c CC=clang CFLAGS="-std=gnu23 -Wall -Wextra -pedantic -D_GNU_SOURCE" && tests/c/run

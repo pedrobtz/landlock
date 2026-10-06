@@ -16,3 +16,10 @@ jobs:
     uses: pedrobtz/r-actions/.github/workflows/coverage.yml@v1
     permissions:
       contents: write
+    with:
+      # Per-file gcov table for src/ in the job summary. Read it, do not
+      # gate on it: the forked child ends with raise(SIGKILL) (design §5.6),
+      # so gcov counters for everything that ran in the child are never
+      # flushed and both the badge and this table undercount child-side
+      # code. The C harness under tests/c measures that side (c-harness.yaml).
+      native: true
