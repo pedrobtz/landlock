@@ -33,3 +33,12 @@ keeps the named capabilities. Irreversible. Linux only.
 its children can gain privileges through \code{execve()} (set-user-id
 programs, file capabilities). Landlock and seccomp set it as well.
 }
+\examples{
+# Irreversible, so shown in a throwaway child; Linux only.
+if (Sys.info()[["sysname"]] == "Linux") {
+  eval_fork({
+    caps_drop_all()
+    status()$caps$effective
+  })
+}
+}

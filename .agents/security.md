@@ -34,8 +34,9 @@ trusted, as in `unix`.
   plain data (`?eval_safe`, Value).
 - **`unserialize()` is not hardened against hostile input.** A crafted
   stream can reach ALTREP class methods of packages loaded in the session.
-  Mitigation for later: a "data only" result mode that transfers a
-  restricted format instead of R serialization.
+  Mitigation for 0.2.0: a data-only result mode that transfers a restricted
+  format instead of R serialization (see roadmap, "data-only result
+  channel").
 - **Landlock `EXECUTE` does not cover `mmap(PROT_EXEC)`.** Confined code
   that can write a shared library to a writable directory can load it. The
   seccomp layer still applies to it; presets deny `execve` where possible.

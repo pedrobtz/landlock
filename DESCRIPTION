@@ -2,7 +2,7 @@ Package: landlock
 Title: Process Confinement with 'Landlock', 'seccomp' and Capabilities
 Version: 0.0.0.9000
 Authors@R: c(
-    person("Pedro", "Z", , "pedrobtz@gmail.com", role = c("aut", "cre")),
+    person("Pedro", "Baltazar", , "pedrobtz@gmail.com", role = c("aut", "cre")),
     person("Jeroen", "Ooms", role = "cph",
            comment = "Author of the 'unix' package test suite ported in tests/testthat")
   )
@@ -29,7 +29,10 @@ Encoding: UTF-8
 Language: en-US
 Roxygen: list(markdown = TRUE)
 Suggests: 
+    knitr,
     parallel,
+    rmarkdown,
     testthat (>= 3.0.0)
+VignetteBuilder: knitr
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.1.0

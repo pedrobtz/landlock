@@ -381,8 +381,8 @@ child_died_message <- function(res) {
   "child process has died before returning a result"
 }
 
-# Package functions are lazy-loaded: the first use reads the installed
-# .rdb. After a policy is applied the child may no longer be able to read it
+# Package functions, and base R's, are lazy-loaded: the first use reads the
+# installed .rdb. After a policy is applied the child may no longer be able to read it
 # (Landlock rules that do not list the library, or a switch to another user
 # who cannot enter the installing user's directories), so a function first
 # used then, by apply_policy()'s later steps or by on.exit(), would fail and
@@ -392,6 +392,12 @@ load_namespace <- function() {
   if (isTRUE(.state$namespace_loaded)) return(invisible())
   ns <- asNamespace("landlock")
   for (name in ls(ns, all.names = TRUE)) get(name, envir = ns, inherits = FALSE)
+  # Base R is lazy-loaded from base.rdb too: a child confined by chroot(),
+  # by Landlock rules that leave out R.home(), or by a switch of user could
+  # otherwise lose functions it needs to report its result (serialize()).
+  base <- baseenv()
+  for (name in ls(base, all.names = TRUE))
+    try(get(name, envir = base, inherits = FALSE), silent = TRUE)
   # The attached exports may hold promises of their own.
   if ("package:landlock" %in% search()) {
     pkg <- as.environment("package:landlock")

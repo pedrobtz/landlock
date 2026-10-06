@@ -1,0 +1,194 @@
+---
+title: "Worked examples"
+---
+
+```{r, include = FALSE}
+# A pkgdown-only article: it is not part of the package tarball, and unlike
+# the vignettes its code runs when the site is built. The site is built on a
+# GitHub Actions Linux runner, so every output below is what landlock really
+# did there.
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(landlock)
+```
+
+This article runs every example when the site is built. The machine that
+built it:
+
+```{r}
+status()
+```
+
+On a kernel without Landlock, or on macOS, the same code runs; the layers the
+kernel lacks are reported as skipped instead of enforced.
+
+## Evaluate code you do not trust
+
+A common case: an application receives R code, from a web form or an API,
+and has to run it. `eval_safe()` runs it in a forked child, and a policy
+decides what that child may do. The `"numeric"` preset allows computing and
+nothing else.
+
+```{r}
+run_untrusted <- function(code, timeout = 5) {
+  expr <- str2lang(code)
+  eval_safe(eval(expr), policy = preset("numeric") |> limits(memory = "4g"),
+            timeout = timeout)
+}
+```
+
+Ordinary computation works:
+
+```{r}
+run_untrusted("summary(lm(mpg ~ wt + hp, data = mtcars))$r.squared")
+```
+
+Reading a file outside R's own files fails. Landlock refuses the open, which
+R reports as a warning (the reason) and an error:
+
+```{r, error = TRUE}
+run_untrusted("readLines('/etc/passwd', n = 1)")
+```
+
+Warnings raised in the child stay in the child, as with `unix::eval_safe()`.
+Catch them inside the expression to see the reason:
+
+```{r}
+run_untrusted("tryCatch(readLines('/etc/passwd', n = 1), warning = conditionMessage)")
+```
+
+Starting a program fails: the preset's seccomp filter refuses `execve`.
+
+```{r}
+run_untrusted("tryCatch(system('id', intern = TRUE), error = conditionMessage, warning = conditionMessage)")
+```
+
+So does opening a socket, which the filter refuses as well:
+
+```{r}
+run_untrusted("tryCatch(serverSocket(18080), error = conditionMessage)")
+```
+
+A loop that never ends is killed when the timeout passes, even when it is
+stuck in C code:
+
+```{r, error = TRUE}
+run_untrusted("repeat {}", timeout = 2)
+```
+
+And a request for more memory than the limit fails inside the child, leaving
+the session untouched:
+
+```{r, error = TRUE}
+run_untrusted("x <- numeric(1e9)")
+```
+
+What was enforced is in the report:
+
+```{r}
+last_report()
+```
+
+A layer the kernel cannot provide is reported as `skipped`. When that is not
+acceptable, build the policy with `policy(best_effort = FALSE)` and the
+evaluation fails instead of running with less protection.
+
+## A policy for a task
+
+Presets are a starting point. For a specific job, list exactly what it needs.
+Here a function summarises a CSV file from an input directory and writes the
+result to an output directory; it may read the input, write the output, and
+nothing else of the user's.
+
+```{r}
+input <- file.path(tempdir(), "input")
+output <- file.path(tempdir(), "output")
+dir.create(input)
+dir.create(output)
+write.csv(mtcars, file.path(input, "cars.csv"), row.names = FALSE)
+
+task_policy <- policy() |>
+  fs(read = c(R.home(), .libPaths(), "/usr", input), write = output) |>
+  net() |>
+  syscalls(deny = c(preset("dangerous"), preset("no_exec"), preset("no_net"))) |>
+  caps() |>
+  limits(memory = "4g", cpu = 30)
+task_policy
+```
+
+```{r}
+summarise_file <- function(name) {
+  eval_safe({
+    d <- read.csv(file.path(input, name))
+    s <- aggregate(mpg ~ cyl, data = d, FUN = mean)
+    write.csv(s, file.path(output, "summary.csv"), row.names = FALSE)
+    nrow(s)
+  }, policy = task_policy)
+}
+
+summarise_file("cars.csv")
+read.csv(file.path(output, "summary.csv"))
+```
+
+The same code cannot reach anything else. Writing into the input directory,
+or reading the output it just wrote, is refused: `write` and `read` are
+separate rights.
+
+```{r}
+eval_safe(file.create(file.path(input, "planted.csv")), policy = task_policy)
+eval_safe(file.exists(file.path(output, "summary.csv")), policy = task_policy)
+eval_safe(tryCatch(readLines(file.path(output, "summary.csv")), warning = conditionMessage),
+          policy = task_policy)
+```
+
+`file.exists()` still answers: Landlock governs opening files, not looking at
+their metadata.
+
+## Running a program
+
+`run()` applies a policy to a program instead of R code. The program needs
+permission to execute itself and the dynamic loader (the kernel opens both
+for execution), and to read its libraries.
+
+```{r}
+words <- file.path(input, "words.txt")
+writeLines(c("pear", "apple", "fig"), words)
+
+sort_policy <- policy() |>
+  fs(read = c("/usr", "/etc/ld.so.cache", words), exec = c("/usr/bin", "/usr/lib")) |>
+  net()
+
+res <- run("sort", words, policy = sort_policy)
+res$status
+cat(rawToChar(res$stdout))
+```
+
+The same program on a file the policy does not list:
+
+```{r}
+res <- run("sort", "/etc/passwd", policy = sort_policy)
+res$status
+cat(rawToChar(res$stderr))
+```
+
+## Coming from unix
+
+Code written for the 'unix' package runs unchanged:
+
+```{r}
+eval_safe(rlimit_cpu()$cur, rlimits = c(cpu = 10))
+eval_fork(getppid() == getpid())
+```
+
+and gains confinement by adding `policy`:
+
+```{r}
+eval_safe(sum(1:10), rlimits = c(cpu = 10), policy = preset("numeric"))
+```
+
+## Values from confined code
+
+Under a policy the package never evaluates what the child sends back, but
+the value you receive is the child's data. R values can carry code:
+closures, and environments whose active bindings run when read. From code
+you do not trust, return plain data such as vectors, lists and data frames,
+as `run_untrusted()` above does.

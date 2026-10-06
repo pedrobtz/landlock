@@ -8,3 +8,5 @@
 ^tests/c$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
+^capture\.R$
+^vignettes/articles$

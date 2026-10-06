@@ -84,6 +84,11 @@ priority (raise the value).
 getuid()
 getpid()
 getpriority()
+
+# Changing the process is irreversible, so shown in throwaway children:
+eval_fork(setpriority(getpriority() + 1))
+eval_fork(setpgid())
+eval_fork(getppid()) == getpid()
 }
 \references{
 \href{https://man7.org/linux/man-pages/man2/getuid.2.html}{GETUID(2)}

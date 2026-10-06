@@ -38,3 +38,12 @@ only the calling thread and the threads and processes it creates later,
 so \code{confine()} refuses to run in a session that already has other threads
 (a multi-threaded BLAS, for example) unless \code{force = TRUE}.
 }
+\examples{
+# Irreversible, so shown in a throwaway child:
+eval_fork({
+  confine(limits(policy(), cpu = 60))
+  rlimit_cpu()$cur
+})
+
+eval_fork(apply_policy(limits(policy(), cpu = 60)))
+}

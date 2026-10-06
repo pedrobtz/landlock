@@ -166,9 +166,9 @@ Linux box, from the first real commit.
       and capabilities need Linux; resource limits and fork work on any
       Unix-alike`, `BugReports: https://github.com/pedrobtz/landlock/issues`,
       `Copyright: file inst/COPYRIGHTS`. Keep `Version: 0.0.0.9000` until
-      Stage 8. No Imports. The maintainer is entered as `Pedro Z` from the
-      GitHub profile; **confirm the full family name before Stage 8**, CRAN
-      wants the real name. Jeroen Ooms is `cph` for the ported `unix` tests.
+      Stage 8. Imports only base packages. The maintainer is Pedro Baltazar,
+      as on the CRAN package `zujson` (the first draft had `Pedro Z` from the
+      GitHub profile; corrected in Stage 6). Jeroen Ooms is `cph` for the ported `unix` tests.
 - [x] `LICENSE`: kept as "landlock authors". That is the usethis convention
       CRAN accepts for `MIT + file LICENSE`; the people are in `Authors@R`.
 - [x] `LICENSE.note` and `inst/COPYRIGHTS` for the uapi constants and the
@@ -422,31 +422,42 @@ reason.
 
 ## Stage 6 — Documentation
 
-- [ ] roxygen for every export: `@param`, `@return` (CRAN requires a
+- [x] roxygen for every export: `@param`, `@return` (CRAN requires a
       `\value` section on every Rd, including the wrappers), `@examples`.
       One-way functions (`confine()`, `restrict_self()`, `seccomp_deny()`,
       `caps_drop_all()`, `no_new_privs()`, `setids()`, `chroot()`) show their
       example inside `eval_safe()` so it runs and is harmless, with a
       `\dontrun{}` block for the in-session form.
-- [ ] `landlock-package.R`: package-level page linking the three execution
+- [x] `landlock-package.R`: package-level page linking the three execution
       models and the layer table.
-- [ ] README: replace the template. Installation, a six-line `eval_safe()`
+- [x] README: replace the template. Installation, a six-line `eval_safe()`
       example, the layers table with "works in containers / needs a VM"
       columns, a link to `status()`. Code blocks are static, not knitted
       (knitting on the Mac would show every layer skipped).
-- [ ] Vignettes (`Suggests: knitr, rmarkdown`; chunks `eval = FALSE` where
+- [x] Vignettes (`Suggests: knitr, rmarkdown`; chunks `eval = FALSE` where
       they depend on the kernel, with pre-captured output shown):
       `getting-started` (policy, eval_safe, reading the report) and
       `layers` (what each layer stops, how it degrades, what Docker and
       Kubernetes typically allow: design §11).
-- [ ] `NEWS.md`: a real 0.1.0 entry listing the public API.
-- [ ] `_pkgdown.yml`: reference index grouped as Execution / Policy /
+- [x] `NEWS.md`: a real 0.1.0 entry listing the public API.
+- [x] `_pkgdown.yml`: reference index grouped as Execution / Policy /
       Status / Confinement layers / Process, limits and ids (the `unix` API).
-- [ ] `getting-started` vignette opens with the migration from `unix`: what
+- [x] `getting-started` vignette opens with the migration from `unix`: what
       is identical (everything), what is new (`policy`, the report attribute,
       `status()`).
-- [ ] `inst/COPYRIGHTS`, `LICENSE.note` final wording.
-- [ ] `spelling::spell_check_package()` with a `inst/WORDLIST`.
+- [x] `inst/COPYRIGHTS`, `LICENSE.note` final wording.
+- [x] `spelling::spell_check_package()` with a `inst/WORDLIST`.
+
+Done differently: every output shown in the README and the vignettes was
+captured on a GitHub Linux runner (kernel 6.17, Landlock ABI 7) by a
+throwaway branch, never invented; the ABI 3 example uses the testing option
+that caps the ABI, so its text is what the package prints on such a kernel.
+Capturing found that the first drafts were wrong in three places (a `run()`
+example blocked by the preset's seccomp filter, a report header showing the
+kernel's ABI rather than the one used, `system()` warning rather than
+failing). Vignettes are not evaluated at build time, since their output
+depends on the kernel. Examples of irreversible functions run in
+`eval_fork()`.
 
 Exit criteria: `devtools::document()` produces no warnings, `R CMD check`
 reports no undocumented objects or missing `\value`, pkgdown site builds in
@@ -505,7 +516,20 @@ a tag candidate commit on `main`.
       CRAN badge to README. Add the package to R-universe
       (`pedrobtz.r-universe.dev`) so users get builds between CRAN releases.
 - [ ] Open the 0.2.0 tracking issue: namespaces and mounts (M3), cgroup v2
-      and streaming (M4), AppArmor `profile=`, then TOML/explain/trace (M5).
+      (M4), the `inst/apparmor` userns profile, then TOML/explain/trace (M5),
+      and a data-only result mode (below).
+
+### Considered for 0.2.0: a data-only result channel
+
+`.agents/security.md` accepts one residual risk: under a policy the session
+still `unserialize()`s bytes from a hostile child, and R's unserializer is
+not hardened against crafted input. A result mode that transfers only atomic
+vectors, lists and data frames in a restricted binary format, decoded without
+R serialization, would close it. The maintainer's own `zubin` (typed binary
+layouts) or `zujson` could carry it. Not in 0.1.0: neither is on CRAN yet, a
+`LinkingTo` dependency would block the first submission, and the sandbox's
+trusted base should stay small. `zufast`'s parsing primitives have no hot
+path in this package.
 
 Exit criteria: `landlock` 0.1.0 listed on CRAN with checks green on all
 flavours; `main` is on `0.1.0.9000`.
