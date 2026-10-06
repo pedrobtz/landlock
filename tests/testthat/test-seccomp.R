@@ -47,10 +47,13 @@ test_that("the dangerous set leaves ordinary R working", {
 
 test_that("seccomp_deny() works on the calling process", {
   skip_if_not(is_linux())
-  expect_identical(eval_fork({
+  # getppid() "cannot fail", so C libraries return the raw result: -1
+  # (glibc on x86_64) or -errno (glibc on i386, musl). Either way, < 0.
+  r <- eval_fork({
     seccomp_deny("getppid", errno = "EACCES")
     getppid()
-  }), -1L)
+  })
+  expect_true(r %in% c(-1L, -13L))
 })
 
 test_that("syscall_table() lists this architecture's calls", {

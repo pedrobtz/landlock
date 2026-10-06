@@ -27,7 +27,11 @@ jobs:
       # where every Linux-only layer must compile to a stub and report
       # "skipped"; the two Ubuntu legs cover R release and oldrel. The
       # containers (default) are CRAN's r-devel Linux compilers.
+      # ubuntu-24.04-arm: a native aarch64 kernel. seccomp's arch check,
+      # syscall numbers and Landlock need a real kernel of that architecture;
+      # QEMU user-mode emulation (the arch workflow) rejects seccomp filters.
       runners: >-
         [{"os": "macos-latest", "r": "release"},
          {"os": "ubuntu-latest", "r": "release"},
-         {"os": "ubuntu-latest", "r": "oldrel-1"}]
+         {"os": "ubuntu-latest", "r": "oldrel-1"},
+         {"os": "ubuntu-24.04-arm", "r": "release"}]

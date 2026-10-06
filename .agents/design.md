@@ -765,7 +765,8 @@ express:
 | `R-CMD-check.yaml` | `r-cmd-check.yml` | `runners` overridden to macOS release, ubuntu release, ubuntu oldrel-1: the default `windows-latest` row cannot install an `OS_type: unix` package. Containers at default: CRAN's r-devel Linux compilers with `-std=gnu23 -pedantic`. |
 | `coverage.yaml` | `coverage.yml` with `native: true` | covr badge plus a per-file gcov table for `src/`. Both undercount child-side code (below). |
 | `native-checks.yaml` | `sanitizers.yml` (UBSan + ASan), `valgrind.yml`, `lto.yml`, `gctorture.yml`, `rchk.yml`, `analyzers.yml`, `cran-special.yml` | rchk and gctorture for `rglue.c`'s PROTECT discipline; sanitizers, valgrind and `-fanalyzer` for the core's error paths; LTO for `lk.h` drifting from its six translation units; rcnst/rlibro/vnu are CRAN's extra checks. |
-| `arch.yaml` | `arch.yml`, weekly and on dispatch | i386, musl, aarch64: the three legs where the seccomp arch constant, the syscall numbers and the `__NR_*` fallbacks differ (§5.2). Run by hand before each release. |
+| `arch.yaml` | `arch.yml`, weekly and on dispatch | i386 and musl, run without emulation on the x86_64 kernel: legs where the seccomp arch constant, the syscall numbers and the `__NR_*` fallbacks differ (§5.2). Run by hand before each release. aarch64 was dropped from it: under QEMU user-mode emulation seccomp filters are rejected and every process gains an emulator thread. |
+| (aarch64) | `ubuntu-24.04-arm` runners | a native aarch64 kernel, as a leg of `R-CMD-check` and of `c-harness`. |
 | `c-harness.yaml` | hand-written | Builds and runs `tests/c` without R: on the VM runner as the runner user and as `nobody`, and in an `ubuntu:24.04` container as root with gcc and with `clang -std=gnu23 -pedantic`. |
 | `pkgdown.yaml` | r-lib template | r-actions has no pkgdown workflow. |
 

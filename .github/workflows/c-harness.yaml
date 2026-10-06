@@ -32,7 +32,13 @@ concurrency:
 # The `have` step is the only gate; nothing else here reads the tree.
 jobs:
   runner:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # x86_64, and a native aarch64 kernel for the arch-specific seccomp
+        # filter, syscall numbers and Landlock fallbacks.
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - name: Is the harness there yet?
