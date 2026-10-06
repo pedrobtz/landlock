@@ -44,7 +44,8 @@ eval_fork(
 
 - tmp:
 
-  Temporary directory for the child; becomes its `TMPDIR`.
+  Temporary directory for the child; becomes its `TMPDIR`. When left at
+  its default it is created for the call and removed afterwards.
 
 - std_out, std_err:
 
@@ -61,7 +62,9 @@ eval_fork(
 
 - uid, gid:
 
-  User and group to switch to (root only), as ids or names. After the
+  User and group to switch to (root only), as ids or names. A `uid`
+  without a `gid` takes the user's primary group, and the supplementary
+  groups are replaced, so no group of the caller remains. After the
   switch the child can only read what that user can read, including the
   R libraries it lazy-loads code from: landlock's own functions are
   loaded beforehand, but functions of other packages used for the first
@@ -85,15 +88,23 @@ eval_fork(
 
   A
   [`policy()`](https://pedrobtz.github.io/landlock/reference/policy.md)
-  applied in the child before `expr` runs. When given, the child also
-  closes every file descriptor it inherited except its standard streams,
-  because Landlock does not revoke files that are already open.
+  applied in the child before `expr` runs. When given, every file
+  descriptor the child inherited, except its standard streams, is
+  pointed at `/dev/null` first, because Landlock does not revoke files
+  that are already open. Connections and graphics devices inherited from
+  the session are therefore unusable in the child.
 
 ## Value
 
 The value of `expr`, visible or invisible as in the child. The report of
 the applied policy is available as
 [`last_report()`](https://pedrobtz.github.io/landlock/reference/last_report.md).
+
+Under a `policy`, treat the value as data from an untrusted process. The
+package itself never evaluates what the child sends, but the value can
+contain closures, or environments whose active bindings run code when
+read. Return plain data (vectors, lists, data frames) from confined
+code, and be careful with anything else.
 
 ## Details
 

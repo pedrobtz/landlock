@@ -69,7 +69,7 @@ first library path), <code>port</code> for <code>"plumber"</code> (default 8000)
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>Policies:</p><ul><li><p><code>"numeric"</code>: evaluate R code that only computes. Reads R, the
 installed packages and system libraries; reads and writes only the
-session's temporary directory; may execute nothing; no TCP; signals and abstract
+call's own temporary directory (the child's <code>TMPDIR</code>; see <code><a href="policy.html">fs()</a></code>); may execute nothing; no TCP; signals and abstract
 sockets scoped to the sandbox; the <code>"dangerous"</code>, <code>"no_exec"</code> and
 <code>"no_net"</code> system calls denied; all capabilities dropped.</p></li>
 <li><p><code>"install"</code>: install a package from source. As <code>"numeric"</code>, plus
@@ -84,7 +84,9 @@ widen the kernel's attack surface or escape a sandbox: <code>ptrace</code>,
 <code>process_vm_readv</code>, mounting, namespaces, keyrings, <code>bpf</code>,
 <code>perf_event_open</code>, <code>io_uring</code>, <code>userfaultfd</code>, kernel modules, <code>kexec</code>,
 <code>reboot</code>, swap, clock setting, <code>open_by_handle_at</code>, NUMA policy calls,
-and <code>landlock_*</code> and <code>seccomp</code> themselves (the sandbox is complete by
+<code>pidfd_getfd</code>, leaving the process group (<code>setsid</code>, <code>setpgid</code>, so that
+nothing outlives the call), <code>clone3</code> (see <code><a href="seccomp_deny.html">seccomp_deny()</a></code>), and
+<code>landlock_*</code> and <code>seccomp</code> themselves (the sandbox is complete by
 the time the filter is installed). Never <code>set*id</code> or <code>capset</code>, which
 the later steps of <code><a href="apply_policy.html">apply_policy()</a></code> use.</p></li>
 <li><p><code>"no_exec"</code>: <code>execve</code> and <code>execveat</code> (<code><a href="https://rdrr.io/r/base/system.html" class="external-link">system()</a></code> stops working).</p></li>
@@ -97,11 +99,12 @@ to stop UDP without a network namespace.</p></li>
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu">preset</span><span class="op">(</span><span class="st">"numeric"</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;landlock policy&gt; best effort </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /lib, /lib64, /opt/R, /etc/ld.so.cache, /etc/localtime, /etc/timezone, /etc/os-release, /dev/urandom, /dev/null, /tmp/RtmpaSV0p3, /dev/null</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   fs write  /tmp/RtmpaSV0p3, /dev/null</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /lib, /lib64, /opt/R, /etc/ld.so.cache, /etc/localtime, /etc/timezone, /etc/os-release, /dev/urandom, /dev/null, /dev/null</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   fs write  /dev/null</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   fs tmp    the call's own temporary directory (read and write)  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   tcp       bind: none; connect: none</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   scope     signal, abstract_unix  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   syscalls  deny 72 calls, action errno </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   syscalls  deny 77 calls, action errno </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   caps      keep none </span>
 </code></pre></div>
     </div>

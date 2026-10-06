@@ -14,7 +14,7 @@ or
 ``` r
 policy(best_effort = TRUE, log = NULL)
 
-fs(p, read = NULL, write = NULL, exec = NULL, rw = NULL)
+fs(p, read = NULL, write = NULL, exec = NULL, rw = NULL, tmp = FALSE)
 
 net(p, bind = integer(), connect = integer())
 
@@ -62,6 +62,16 @@ caps(p, keep = character())
 - read, write, exec, rw:
 
   Character vectors of paths.
+
+- tmp:
+
+  If `TRUE`, also allow reading and writing the call's own temporary
+  directory: `tmp` of
+  [`eval_safe()`](https://pedrobtz.github.io/landlock/reference/eval_safe.md),
+  the child's `TMPDIR`. It is created for the call and, by default,
+  removed afterwards. The session's
+  [`tempdir()`](https://rdrr.io/r/base/tempfile.html) is deliberately
+  not granted: the session may later trust what it finds there.
 
 - bind, connect:
 
@@ -160,7 +170,7 @@ p <- policy() |>
 p
 #> <landlock policy> best effort 
 #>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library
-#>   fs write  /tmp/RtmpaSV0p3
+#>   fs write  /tmp/RtmpXcgNB9
 #>   tcp       bind: none; connect: none
 #>   limits    as=2 GiB, nofile=256 
 ```

@@ -91,6 +91,10 @@ if only the calling one, invisibly. <code>seccomp_status()</code>: a list with t
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>The filter goes to every thread of the process when the kernel can do
 that (seccomp's TSYNC flag), otherwise only to the calling thread.</p>
+<p>Two calls get special treatment. <code>clone3</code> always fails with <code>ENOSYS</code>, so
+the C library falls back to <code>clone()</code>, whose flags a filter can inspect.
+Denying <code>unshare</code> also refuses <code>clone()</code> with any namespace flag, which
+would otherwise create the same namespaces.</p>
 <p>Actions: <code>"errno"</code> makes the call fail with <code>errno</code> (default <code>EPERM</code>),
 <code>"kill"</code> kills the process with <code>SIGSYS</code>, <code>"log"</code> allows the call but
 logs it to the kernel audit log, <code>"trap"</code> sends <code>SIGSYS</code> to the thread.</p>

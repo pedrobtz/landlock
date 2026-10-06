@@ -48,6 +48,11 @@ the calling one, invisibly. `seccomp_status()`: a list with the `mode`
 The filter goes to every thread of the process when the kernel can do
 that (seccomp's TSYNC flag), otherwise only to the calling thread.
 
+Two calls get special treatment. `clone3` always fails with `ENOSYS`, so
+the C library falls back to `clone()`, whose flags a filter can inspect.
+Denying `unshare` also refuses `clone()` with any namespace flag, which
+would otherwise create the same namespaces.
+
 Actions: `"errno"` makes the call fail with `errno` (default `EPERM`),
 `"kill"` kills the process with `SIGSYS`, `"log"` allows the call but
 logs it to the kernel audit log, `"trap"` sends `SIGSYS` to the thread.

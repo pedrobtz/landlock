@@ -50,7 +50,7 @@ until the policy is passed to <code><a href="eval_safe.html">eval_safe()</a></co
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">policy</span><span class="op">(</span>best_effort <span class="op">=</span> <span class="cn">TRUE</span>, log <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">fs</span><span class="op">(</span><span class="va">p</span>, read <span class="op">=</span> <span class="cn">NULL</span>, write <span class="op">=</span> <span class="cn">NULL</span>, exec <span class="op">=</span> <span class="cn">NULL</span>, rw <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
+<span><span class="fu">fs</span><span class="op">(</span><span class="va">p</span>, read <span class="op">=</span> <span class="cn">NULL</span>, write <span class="op">=</span> <span class="cn">NULL</span>, exec <span class="op">=</span> <span class="cn">NULL</span>, rw <span class="op">=</span> <span class="cn">NULL</span>, tmp <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">net</span><span class="op">(</span><span class="va">p</span>, bind <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/integer.html" class="external-link">integer</a></span><span class="op">(</span><span class="op">)</span>, connect <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/integer.html" class="external-link">integer</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
@@ -100,6 +100,14 @@ logging of denials off.</p></dd>
 
 <dt id="arg-read-write-exec-rw">read, write, exec, rw<a class="anchor" aria-label="anchor" href="#arg-read-write-exec-rw"></a></dt>
 <dd><p>Character vectors of paths.</p></dd>
+
+
+<dt id="arg-tmp">tmp<a class="anchor" aria-label="anchor" href="#arg-tmp"></a></dt>
+<dd><p>If <code>TRUE</code>, also allow reading and writing the call's own
+temporary directory: <code>tmp</code> of <code><a href="eval_safe.html">eval_safe()</a></code>, the child's <code>TMPDIR</code>. It is
+created for the call and, by default, removed afterwards. The session's
+<code><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir()</a></code> is deliberately not granted: the session may later trust
+what it finds there.</p></dd>
 
 
 <dt id="arg-bind-connect">bind, connect<a class="anchor" aria-label="anchor" href="#arg-bind-connect"></a></dt>
@@ -185,7 +193,7 @@ kernel offers.</p></div>
 <span class="r-in"><span><span class="va">p</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;landlock policy&gt; best effort </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   fs write  /tmp/RtmpaSV0p3</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   fs write  /tmp/RtmpXcgNB9</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   tcp       bind: none; connect: none</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   limits    as=2 GiB, nofile=256 </span>
 </code></pre></div>

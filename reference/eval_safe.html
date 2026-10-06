@@ -87,7 +87,8 @@ in the same order; <code>policy</code> is added at the end.</p>
 
 
 <dt id="arg-tmp">tmp<a class="anchor" aria-label="anchor" href="#arg-tmp"></a></dt>
-<dd><p>Temporary directory for the child; becomes its <code>TMPDIR</code>.</p></dd>
+<dd><p>Temporary directory for the child; becomes its <code>TMPDIR</code>. When
+left at its default it is created for the call and removed afterwards.</p></dd>
 
 
 <dt id="arg-std-out-std-err">std_out, std_err<a class="anchor" aria-label="anchor" href="#arg-std-out-std-err"></a></dt>
@@ -104,6 +105,8 @@ in the same order; <code>policy</code> is added at the end.</p>
 
 <dt id="arg-uid-gid">uid, gid<a class="anchor" aria-label="anchor" href="#arg-uid-gid"></a></dt>
 <dd><p>User and group to switch to (root only), as ids or names.
+A <code>uid</code> without a <code>gid</code> takes the user's primary group, and the
+supplementary groups are replaced, so no group of the caller remains.
 After the switch the child can only read what that user can read,
 including the R libraries it lazy-loads code from: landlock's own
 functions are loaded beforehand, but functions of other packages used for
@@ -126,15 +129,21 @@ limit; zero and <code>NA</code> are ignored.</p></dd>
 
 <dt id="arg-policy">policy<a class="anchor" aria-label="anchor" href="#arg-policy"></a></dt>
 <dd><p>A <code><a href="policy.html">policy()</a></code> applied in the child before <code>expr</code> runs. When
-given, the child also closes every file descriptor it inherited except
-its standard streams, because Landlock does not revoke files that are
-already open.</p></dd>
+given, every file descriptor the child inherited, except its standard
+streams, is pointed at <code>/dev/null</code> first, because Landlock does not
+revoke files that are already open. Connections and graphics devices
+inherited from the session are therefore unusable in the child.</p></dd>
 
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>The value of <code>expr</code>, visible or invisible as in the child. The
 report of the applied policy is available as <code><a href="last_report.html">last_report()</a></code>.</p>
+<p>Under a <code>policy</code>, treat the value as data from an untrusted process. The
+package itself never evaluates what the child sends, but the value can
+contain closures, or environments whose active bindings run code when
+read. Return plain data (vectors, lists, data frames) from confined
+code, and be careful with anything else.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>

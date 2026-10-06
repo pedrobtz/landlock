@@ -36,10 +36,11 @@ Policies:
 
 - `"numeric"`: evaluate R code that only computes. Reads R, the
   installed packages and system libraries; reads and writes only the
-  session's temporary directory; may execute nothing; no TCP; signals
-  and abstract sockets scoped to the sandbox; the `"dangerous"`,
-  `"no_exec"` and `"no_net"` system calls denied; all capabilities
-  dropped.
+  call's own temporary directory (the child's `TMPDIR`; see
+  [`fs()`](https://pedrobtz.github.io/landlock/reference/policy.md));
+  may execute nothing; no TCP; signals and abstract sockets scoped to
+  the sandbox; the `"dangerous"`, `"no_exec"` and `"no_net"` system
+  calls denied; all capabilities dropped.
 
 - `"install"`: install a package from source. As `"numeric"`, plus
   executing the compiler toolchain (and the dynamic loader, which the
@@ -59,6 +60,9 @@ and
   `process_vm_readv`, mounting, namespaces, keyrings, `bpf`,
   `perf_event_open`, `io_uring`, `userfaultfd`, kernel modules, `kexec`,
   `reboot`, swap, clock setting, `open_by_handle_at`, NUMA policy calls,
+  `pidfd_getfd`, leaving the process group (`setsid`, `setpgid`, so that
+  nothing outlives the call), `clone3` (see
+  [`seccomp_deny()`](https://pedrobtz.github.io/landlock/reference/seccomp_deny.md)),
   and `landlock_*` and `seccomp` themselves (the sandbox is complete by
   the time the filter is installed). Never `set*id` or `capset`, which
   the later steps of
@@ -78,10 +82,11 @@ Paths that do not exist on this system are left out of the policies.
 ``` r
 preset("numeric")
 #> <landlock policy> best effort 
-#>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /lib, /lib64, /opt/R, /etc/ld.so.cache, /etc/localtime, /etc/timezone, /etc/os-release, /dev/urandom, /dev/null, /tmp/RtmpaSV0p3, /dev/null
-#>   fs write  /tmp/RtmpaSV0p3, /dev/null
+#>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /lib, /lib64, /opt/R, /etc/ld.so.cache, /etc/localtime, /etc/timezone, /etc/os-release, /dev/urandom, /dev/null, /dev/null
+#>   fs write  /dev/null
+#>   fs tmp    the call's own temporary directory (read and write)  
 #>   tcp       bind: none; connect: none
 #>   scope     signal, abstract_unix  
-#>   syscalls  deny 72 calls, action errno 
+#>   syscalls  deny 77 calls, action errno 
 #>   caps      keep none 
 ```
