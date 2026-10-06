@@ -83,16 +83,16 @@ LK_TEST(kill_action)
 LK_TEST(stacked_filters)
 {
 #ifdef __linux__
-    int a = lk_sc_lookup("getppid"), b = lk_sc_lookup("getpgrp");
+    /* Two calls every architecture has (aarch64 has no getpgrp). */
+    int a = lk_sc_lookup("getppid"), b = lk_sc_lookup("gettid");
     int tsync;
-    if (b < 0)
-        SKIP("no getpgrp on this arch");
+    CHECK(a >= 0 && b >= 0, "lookup");
     CHECK(lk_sc_deny(&a, 1, LK_SC_ERRNO, EACCES, &tsync) == 0, "first");
     CHECK(lk_sc_deny(&b, 1, LK_SC_ERRNO, EPERM, &tsync) == 0, "second");
     errno = 0;
     CHECK(syscall(SYS_getppid) == -1 && errno == EACCES, "first filter lost");
     errno = 0;
-    CHECK(syscall(SYS_getpgrp) == -1 && errno == EPERM, "second filter missing");
+    CHECK(syscall(SYS_gettid) == -1 && errno == EPERM, "second filter missing");
     PASS();
 #else
     SKIP("not Linux");
