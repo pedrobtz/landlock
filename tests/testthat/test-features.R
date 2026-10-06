@@ -7,6 +7,7 @@ test_that("the child has no controlling terminal", {
 
 test_that("the child dies with the session", {
   skip_if_not(is_linux())
+  skip_if(under_gctorture(), "the inner child needs more than the outer timeout to start")
   f <- tempfile("lk-orphan-")
   # A "session" (outer fork) starts a confined child, then dies at once.
   try(eval_fork({

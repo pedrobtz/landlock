@@ -195,6 +195,28 @@ LK_TEST(userns_probe)
     return LK_T_PASS;
 }
 
+#ifdef __linux__
+/* Gone, or a zombie: an orphan killed in a container is reparented to a
+ * PID 1 that often does not reap, and kill(pid, 0) still finds it. */
+static int dead(pid_t pid)
+{
+    if (kill(pid, 0) != 0)
+        return 1;
+    char path[64], line[512];
+    snprintf(path, sizeof path, "/proc/%d/stat", (int) pid);
+    FILE *f = fopen(path, "r");
+    if (!f)
+        return 0;
+    int zombie = 0;
+    if (fgets(line, sizeof line, f)) {
+        char *p = strrchr(line, ')');
+        zombie = p && p[1] == ' ' && p[2] == 'Z';
+    }
+    fclose(f);
+    return zombie;
+}
+#endif
+
 LK_TEST(new_session_drops_terminal)
 {
     int rc = lk_new_session();
@@ -237,9 +259,9 @@ LK_TEST(die_with_parent)
     ssize_t r = read(p[0], &g, sizeof g);
     close(p[0]);
     CHECK(r == (ssize_t) sizeof g && g > 0, "no grandchild pid");
-    for (int i = 0; i < 100 && kill(g, 0) == 0; i++)
+    for (int i = 0; i < 100 && !dead(g); i++)
         usleep(20000);
-    CHECK(kill(g, 0) != 0, "grandchild %d survived its parent", (int) g);
+    CHECK(dead(g), "grandchild %d survived its parent", (int) g);
     PASS();
 #else
     CHECK(lk_die_with_parent(getppid()) == -ENOSYS, "off Linux");
