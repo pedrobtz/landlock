@@ -3,8 +3,15 @@
 
 pid_file <- function() tempfile("lk-pid-")
 
+# Gone, or dead and waiting to be reaped. A grandchild orphaned by the kill
+# is reparented to PID 1, which in a container is often not an init that
+# reaps, so it stays a zombie that kill(pid, 0) still finds.
 child_gone <- function(pid) {
-  identical(tryCatch(kill(pid, 0L), error = function(e) "gone"), "gone")
+  if (identical(tryCatch(kill(pid, 0L), error = function(e) "gone"), "gone")) return(TRUE)
+  stat <- sprintf("/proc/%d/stat", pid)
+  if (!file.exists(stat)) return(FALSE)
+  fields <- strsplit(sub("^.*\\) ", "", readLines(stat, warn = FALSE)), " ")[[1]]
+  identical(fields[1], "Z")
 }
 
 test_that("an interrupt kills and reaps the child, and is a real interrupt", {
