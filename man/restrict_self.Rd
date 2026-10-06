@@ -35,3 +35,11 @@ restricted when \code{tcp_bind} or \code{tcp_connect} is given, and the scopes a
 applied. Irreversible. Landlock restricts the calling thread and what it
 creates afterwards, not threads that already exist; see \code{\link[=confine]{confine()}}.
 }
+\examples{
+# Irreversible, so shown in a throwaway child. Where Landlock is
+# available, everything outside R's own files becomes unreadable.
+eval_fork({
+  restrict_self(read = c(R.home(), .libPaths()))
+  tryCatch(readLines("/etc/passwd", n = 1), warning = conditionMessage)
+})
+}

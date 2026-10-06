@@ -17,3 +17,12 @@ current one.}
 Sets the supplementary groups (root only), then the real, effective and
 saved group id, then the user id, so the process cannot switch back.
 }
+\examples{
+# Root only, irreversible: shown in a throwaway child.
+if (getuid() == 0) {
+  eval_fork({
+    setids(65534, 65534)
+    c(getuid(), getgid())
+  })
+}
+}

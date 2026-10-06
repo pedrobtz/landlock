@@ -15,6 +15,14 @@
 #' @return `caps_drop_all()` and `caps_keep()`: `TRUE` if the bounding set
 #'   was emptied, `FALSE` if the process lacked the privilege to do so,
 #'   invisibly. `no_new_privs()`: `TRUE`, invisibly.
+#' @examples
+#' # Irreversible, so shown in a throwaway child; Linux only.
+#' if (Sys.info()[["sysname"]] == "Linux") {
+#'   eval_fork({
+#'     caps_drop_all()
+#'     status()$caps$effective
+#'   })
+#' }
 #' @export
 caps_drop_all <- function() {
   invisible(drop_caps(character(), strict = TRUE)$bounding)

@@ -20,6 +20,14 @@
 #'   requested layer and the columns `layer`, `status` (`"applied"` or
 #'   `"skipped"`) and `detail`. Returned invisibly; also available as
 #'   [last_report()].
+#' @examples
+#' # Irreversible, so shown in a throwaway child:
+#' eval_fork({
+#'   confine(limits(policy(), cpu = 60))
+#'   rlimit_cpu()$cur
+#' })
+#'
+#' eval_fork(apply_policy(limits(policy(), cpu = 60)))
 #' @export
 apply_policy <- function(p, strict = !isTRUE(p$best_effort)) {
   check_policy(p)
@@ -188,6 +196,9 @@ thread_count <- function() {
 #'
 #' @return The most recent report (class `lk_report`), or `NULL` if no policy
 #'   has been applied in this session.
+#' @examples
+#' eval_safe(sum(1:10), policy = preset("numeric"))
+#' last_report()
 #' @export
 last_report <- function() {
   .state$last_report

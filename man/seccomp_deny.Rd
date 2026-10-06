@@ -55,3 +55,15 @@ logs it to the kernel audit log, \code{"trap"} sends \code{SIGSYS} to the thread
 architecture; \code{\link[=preset]{preset()}} provides the sets \code{"dangerous"}, \code{"no_exec"} and
 \code{"no_net"}. \code{seccomp_status()} reports the filter state of this process.
 }
+\examples{
+seccomp_status()
+head(syscall_table())
+
+# Irreversible, so shown in a throwaway child; Linux only.
+if (Sys.info()[["sysname"]] == "Linux") {
+  eval_fork({
+    seccomp_deny("getppid")
+    getppid()  # -1: the call failed with EPERM
+  })
+}
+}

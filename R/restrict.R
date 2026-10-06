@@ -12,6 +12,13 @@
 #' @param scope Scopes to apply: any of `"signal"` and `"abstract_unix"`.
 #' @param best_effort,log See [policy()].
 #' @return The report, invisibly; see [apply_policy()].
+#' @examples
+#' # Irreversible, so shown in a throwaway child. Where Landlock is
+#' # available, everything outside R's own files becomes unreadable.
+#' eval_fork({
+#'   restrict_self(read = c(R.home(), .libPaths()))
+#'   tryCatch(readLines("/etc/passwd", n = 1), warning = conditionMessage)
+#' })
 #' @export
 restrict_self <- function(read = NULL, write = NULL, exec = NULL, tcp_bind = NULL,
                           tcp_connect = NULL, scope = c("signal", "abstract_unix"),

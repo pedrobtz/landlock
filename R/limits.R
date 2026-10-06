@@ -123,6 +123,14 @@ unix_rlimits <- function(rlimits) {
 #' @param path Directory of the new root.
 #' @return `path`, normalized.
 #' @references [CHROOT(2)](https://man7.org/linux/man-pages/man2/chroot.2.html)
+#' @examples
+#' # Root only, irreversible: shown in a throwaway child.
+#' if (getuid() == 0) {
+#'   eval_fork({
+#'     chroot(tempdir())
+#'     file.exists("/etc/passwd")
+#'   })
+#' }
 #' @export
 chroot <- function(path = getwd()) {
   path <- normalizePath(path, mustWork = TRUE)
@@ -137,6 +145,14 @@ chroot <- function(path = getwd()) {
 #' @param uid,gid User and group as numeric ids or names; `NULL` keeps the
 #'   current one.
 #' @return `NULL`, invisibly.
+#' @examples
+#' # Root only, irreversible: shown in a throwaway child.
+#' if (getuid() == 0) {
+#'   eval_fork({
+#'     setids(65534, 65534)
+#'     c(getuid(), getgid())
+#'   })
+#' }
 #' @export
 setids <- function(uid = NULL, gid = NULL) {
   .Call(C_setids, resolve_id(uid, "user"), resolve_id(gid, "group"))

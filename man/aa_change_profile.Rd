@@ -18,3 +18,9 @@ writing to \verb{/proc/self/attr/apparmor/current} as 'libapparmor' does. The
 profile must be loaded and must allow the change. Irreversible unless
 the target profile allows changing back.
 }
+\examples{
+# Needs AppArmor and a loaded profile; irreversible, so in a child.
+if (isTRUE(aa_config()$enabled)) {
+  try(eval_fork(aa_change_profile("unconfined")))
+}
+}

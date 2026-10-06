@@ -20,6 +20,11 @@ aa_config <- function() {
 #'
 #' @param profile Name of the profile.
 #' @return `NULL`, invisibly.
+#' @examples
+#' # Needs AppArmor and a loaded profile; irreversible, so in a child.
+#' if (isTRUE(aa_config()$enabled)) {
+#'   try(eval_fork(aa_change_profile("unconfined")))
+#' }
 #' @export
 aa_change_profile <- function(profile) {
   stopifnot(is.character(profile), length(profile) == 1L)

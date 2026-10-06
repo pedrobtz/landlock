@@ -18,6 +18,15 @@ directory to the new root. Only a privileged process may call it. As the
 'unix' package notes, \code{chroot()} is not a security boundary on its own;
 combine it with a \code{\link[=policy]{policy()}}.
 }
+\examples{
+# Root only, irreversible: shown in a throwaway child.
+if (getuid() == 0) {
+  eval_fork({
+    chroot(tempdir())
+    file.exists("/etc/passwd")
+  })
+}
+}
 \references{
 \href{https://man7.org/linux/man-pages/man2/chroot.2.html}{CHROOT(2)}
 }

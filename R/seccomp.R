@@ -31,6 +31,17 @@
 #'   if only the calling one, invisibly. `seccomp_status()`: a list with the
 #'   `mode` (0 none, 1 strict, 2 filter) and the number of `filters`.
 #'   `syscall_table()`: a data frame with `name` and `nr`.
+#' @examples
+#' seccomp_status()
+#' head(syscall_table())
+#'
+#' # Irreversible, so shown in a throwaway child; Linux only.
+#' if (Sys.info()[["sysname"]] == "Linux") {
+#'   eval_fork({
+#'     seccomp_deny("getppid")
+#'     getppid()  # -1: the call failed with EPERM
+#'   })
+#' }
 #' @export
 seccomp_deny <- function(syscalls, action = c("errno", "kill", "log", "trap"), errno = "EPERM") {
   spec <- syscall_spec(syscalls, action, errno)

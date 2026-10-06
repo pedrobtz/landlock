@@ -14,3 +14,7 @@ has been applied in this session.
 Every \code{\link[=eval_safe]{eval_safe()}}, \code{\link[=run]{run()}}, \code{\link[=confine]{confine()}} and \code{\link[=apply_policy]{apply_policy()}} call that
 was given a policy records which layers it applied and which it skipped.
 }
+\examples{
+eval_safe(sum(1:10), policy = preset("numeric"))
+last_report()
+}

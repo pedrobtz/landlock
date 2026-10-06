@@ -2,3 +2,41 @@ url: https://pedrobtz.github.io/landlock/
 template:
   bootstrap: 5
 
+reference:
+- title: Evaluate and run in a confined child
+  contents:
+  - eval_safe
+  - run
+  - last_report
+- title: Policies
+  desc: Describe what the child may do. Policies are plain data.
+  contents:
+  - policy
+  - preset
+  - apply_policy
+- title: What this kernel offers
+  contents:
+  - status
+- title: Single layers, on the calling process
+  desc: Irreversible. Use them inside eval_safe() or in a process you own.
+  contents:
+  - restrict_self
+  - seccomp_deny
+  - caps_drop_all
+  - setids
+  - chroot
+- title: Process, limits and ids (the 'unix' API)
+  desc: The functions of the 'unix' package, with the same names and arguments.
+  contents:
+  - rlimit
+  - process
+  - userinfo
+  - sys_config
+  - aa_change_profile
+
+articles:
+- title: Articles
+  navbar: ~
+  contents:
+  - landlock
+  - layers
