@@ -210,9 +210,11 @@ it into `.agents/dev-env.md`:
 - [x] `c-harness.yaml`: the one hand-written job; builds `tests/c` on the VM
       runner (runner user and `nobody`) and in `ubuntu:24.04` (root, gcc and
       clang `-std=gnu23 -pedantic`). Its `paths` filter means it only runs
-      when `src/` or `tests/c/` change.
-- [ ] First green run of every workflow on the skeleton once `tests/c` has a
-      Makefile (the c-harness job fails until then, which is correct).
+      when `src/` or `tests/c/` change. Until `tests/c/Makefile` exists its
+      build steps are skipped with a notice, so the check is green on the
+      skeleton without pretending to have run anything.
+- [ ] First real run of `c-harness` once `tests/c` has a Makefile; remove
+      nothing from the workflow, the gate switches itself.
 - [ ] Add the `full-ci` label to the repo so a PR can opt into the full
       profile.
 - [ ] Confirm the pkgdown workflow deploys the current skeleton to
