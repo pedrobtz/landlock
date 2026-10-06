@@ -22,3 +22,12 @@ jobs:
       # Quick on each push to a pull request, full after merge. The
       # `full-ci` label runs the full set on a pull request before merging.
       profile: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'full-ci') && 'quick' || 'full' }}
+      # The package is OS_type: unix, so the default matrix's windows-latest
+      # row cannot install it. macOS is CRAN's non-Linux flavour and the leg
+      # where every Linux-only layer must compile to a stub and report
+      # "skipped"; the two Ubuntu legs cover R release and oldrel. The
+      # containers (default) are CRAN's r-devel Linux compilers.
+      runners: >-
+        [{"os": "macos-latest", "r": "release"},
+         {"os": "ubuntu-latest", "r": "release"},
+         {"os": "ubuntu-latest", "r": "oldrel-1"}]

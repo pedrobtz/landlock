@@ -1,0 +1,53 @@
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "src/**"
+      - "tests/c/**"
+      - ".github/workflows/c-harness.yaml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/c/**"
+      - ".github/workflows/c-harness.yaml"
+  workflow_dispatch:
+
+name: c-harness
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+# The C core (design §3) builds and runs without R. r-actions has no
+# workflow for a no-R harness, so this is the one hand-written job in the
+# repo. Two legs on purpose: the VM runner executes as a non-root user and
+# allows user namespaces; the container executes as root and, under Docker's
+# default seccomp profile, cannot unshare(CLONE_NEWUSER). Together they are
+# the root/non-root and VM/container split design §2 and §12 ask for.
+jobs:
+  runner:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Kernel and Landlock ABI
+        run: |
+          uname -r
+          cat /sys/kernel/security/lsm 2>/dev/null || true
+      - name: Build and run as the runner user
+        run: make -C tests/c && tests/c/run
+      - name: Run as nobody
+        run: sudo -u nobody tests/c/run
+
+  container:
+    runs-on: ubuntu-24.04
+    container: ubuntu:24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Toolchain
+        run: apt-get update && apt-get install -y --no-install-recommends build-essential clang
+      - name: Build and run as root (gcc)
+        run: make -C tests/c && tests/c/run
+      - name: Build with clang -std=gnu23 -pedantic
+        run: make -C tests/c clean && make -C tests/c CC=clang CFLAGS="-std=gnu23 -Wall -Wextra -pedantic -D_GNU_SOURCE" && tests/c/run

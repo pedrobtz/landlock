@@ -8,11 +8,11 @@ exit criteria are the contract, not the calendar.
 | Stage | Outcome | Depends on |
 |---|---|---|
 | 0 | 0.1.0 scope fixed, design.md corrected | — |
-| 1 | Repo hygiene, Linux dev loop, CI matrix that can pass | 0 |
-| 2 | C core for Landlock, rlimits, process plumbing; C harness green without R | 1 |
-| 3 | R layer: `status()`, policy object, `eval_safe()`, `run()`, `confine()`, unix aliases | 2 |
+| 1 | Repo hygiene, Linux dev loop, r-actions CI green on the skeleton | 0 |
+| 2 | C core for Landlock, rlimits, ids, process plumbing; C harness green without R | 1 |
+| 3 | R layer: the full `unix` API, `status()`, policy object, `eval_safe()`, `run()`, `confine()` | 2 |
 | 4 | seccomp and capabilities, C and R | 3 |
-| 5 | Hardening: fd hygiene, interrupts, zombies, sanitizers, security review | 4 |
+| 5 | Hardening: interrupts, zombies, fd leaks, every native-checks leg green, arch legs, security review | 4 |
 | 6 | Documentation: reference, README, vignettes, NEWS, pkgdown | 5 |
 | 7 | CRAN readiness: clean `--as-cran` on every CRAN flavour, cran-comments | 6 |
 | 8 | Submission, review loop, release 0.1.0, start 0.1.0.9000 | 7 |
@@ -27,6 +27,15 @@ Design milestones M1 and M2, plus fd hygiene pulled forward from M4. Everything
 in this list works unprivileged, inside Docker, and on CRAN's check machines,
 which is what makes a first review tractable.
 
+- **The complete `unix` 1.6.0 API** (design §15), as first-class exports with
+  identical formals: `eval_safe`, `eval_fork`, the nine `rlimit_*` functions
+  and `rlimit_all`, `getuid`/`geteuid`/`getgid`/`getegid` and their setters,
+  `getpid`, `getppid`, `getpgid`, `setpgid`, `kill`, `getpriority`,
+  `setpriority`, `user_info`, `group_info`, `chroot`, `sys_config`,
+  `aa_config`. `eval_safe(profile=)` works through a `/proc` write. `unix`'s
+  own test files are ported and must pass. This is the headline of 0.1.0: a
+  user replaces `library(unix)` with `library(landlock)` and nothing changes
+  until they pass a `policy`.
 - `status()` with the full probe table from design §7 (namespace and cgroup
   probes included: they are cheap and show users what 0.2.0 will unlock).
 - Policy builder: `policy()`, `fs()`, `net()`, `syscalls()`, `caps()`,
@@ -36,10 +45,9 @@ which is what makes a first review tractable.
   pid namespace).
 - Thin wrappers: `restrict_self()`, `seccomp_deny()`, `seccomp_status()`,
   `syscall_table()`, `caps_drop_all()`, `caps_keep()`, `no_new_privs()`,
-  `rlimit()` and the `rlimit_*()` family, `setids()`, `chroot()`.
+  `setids()`.
 - Presets as R objects in `R/presets.R` (not TOML): syscall sets `dangerous`,
   `no_exec`, `no_net`; policy presets `numeric`, `install`, `plumber`.
-- `compat-unix.R` aliases.
 - fd hygiene in the child before restriction (design §11): without it Landlock
   has a documented hole from day one, and it is ~40 lines of C.
 
@@ -52,7 +60,8 @@ which is what makes a first review tractable.
 - cgroup v2 layer, streaming stdout (M4). `limits(memory=)` maps to
   `RLIMIT_AS` only in 0.1.0; document the OpenBLAS caveat.
 - TOML policies, `read_policy()`, `write_policy()`, `explain()`, `trace()` (M5).
-- AppArmor `profile=` support and the shipped `inst/apparmor` profile.
+- The shipped `inst/apparmor` userns profile (the `profile=` argument itself
+  is 0.1.0, see 0.1).
 - `namespaces()` and `mounts()` are not exported in 0.1.0 at all. Reserving a
   verb that errors "not implemented" is worse for CRAN review than absence.
 
@@ -122,6 +131,19 @@ source of truth.
 - [x] **DESCRIPTION text.** CRAN asks for software names in single quotes and
   a reference for the method: 'Landlock', 'seccomp', 'unix', and
   `<https://landlock.io/>` in Description.
+- [x] **Replacement, not superset.** The package replaces `unix`: all 31
+  exports with identical formals are 0.1.0 scope, `unix`'s tests are ported,
+  `profile=` is honoured through `/proc`. Design §1, §3, §5.5, §6.2, §13, §15
+  updated; the `compat-unix.R` side file is gone.
+- [x] **CI through r-actions from the start.** `R-CMD-check`, `coverage`
+  (`native: true`), `native-checks` (seven jobs), `arch` (i386, musl,
+  aarch64) and a hand-written `c-harness` workflow are in `.github/workflows/`.
+  Design §12 carries the table. Consequence recorded there: tests must
+  tolerate the 10–50× slowdown of the valgrind, ASan and gctorture legs, so no
+  tight wall-clock assertions.
+- [x] **seccomp on i386 and arm.** The design's arch list lacked them; the
+  `arch` workflow would have failed on its first default leg. §5.2 now lists
+  `__i386__` and `__arm__` and returns `-ENOTSUP` elsewhere.
 
 Exit criteria: design.md updated and committed; `.agents/roadmap.md` (this
 file) reflects the same decisions.
@@ -177,20 +199,29 @@ it into `.agents/dev-env.md`:
       depending on the image kernel. ABI 6–7 code paths (scopes, log flags)
       need the newer kernel; keep that box around for manual runs.
 
-### CI
+### CI (`pedrobtz/r-actions`, see design §12 for the table)
 
-- [ ] `R-CMD-check.yaml`: pass `runners` as macOS release, ubuntu release,
-      ubuntu oldrel-1 (no Windows). Keep the three R-hub containers; they are
-      CRAN's r-devel Linux compilers and will catch `-std=gnu23` / `-pedantic`
-      diagnostics before CRAN does.
-- [ ] Add a job that builds and runs `tests/c` on `ubuntu-24.04` and in an
-      `ubuntu:24.04` container, as root and as `nobody`.
+- [x] `R-CMD-check.yaml`: `runners` overridden to macOS release, ubuntu
+      release, ubuntu oldrel-1 (no Windows); containers at default.
+- [x] `coverage.yaml` with `native: true`.
+- [x] `native-checks.yaml`: sanitizers (ASan on), valgrind, lto, gctorture,
+      rchk, analyzers, cran-special, with the quick/full profile expression.
+- [x] `arch.yaml`: i386, musl and aarch64, weekly and on `workflow_dispatch`.
+- [x] `c-harness.yaml`: the one hand-written job; builds `tests/c` on the VM
+      runner (runner user and `nobody`) and in `ubuntu:24.04` (root, gcc and
+      clang `-std=gnu23 -pedantic`). Its `paths` filter means it only runs
+      when `src/` or `tests/c/` change.
+- [ ] First green run of every workflow on the skeleton once `tests/c` has a
+      Makefile (the c-harness job fails until then, which is correct).
+- [ ] Add the `full-ci` label to the repo so a PR can opt into the full
+      profile.
 - [ ] Confirm the pkgdown workflow deploys the current skeleton to
       `https://pedrobtz.github.io/landlock/` so docs are live from day one.
+- [ ] Badges in README for R-CMD-check, coverage and native-checks.
 
 Exit criteria: `R CMD check --as-cran` on the empty package is 0/0/0 on
-macOS and Linux; `cd tests/c && make && ./run` passes with zero tests; CI is
-green with the corrected matrix.
+macOS and Linux; `cd tests/c && make && ./run` passes with zero tests; every
+workflow in `.github/workflows/` has run green at least once on `main`.
 
 ---
 
@@ -208,8 +239,9 @@ with no R in sight.
       for non-directories, rights table from §9, `no_new_privs` before
       `restrict_self`, best-effort masking versus `-ENOTSUP` in strict mode,
       report struct filled in.
-- [ ] `lim.c`: `lk_rlimit_lookup/get/set`, `lk_setids`, `lk_chroot`.
-      `RLIM_INFINITY` ↔ `UINT64_MAX`.
+- [ ] `lim.c`: `lk_rlimit_lookup/get/set`, `lk_setids`, `lk_setid`,
+      `lk_setpgid`, `lk_priority_get/set`, `lk_chroot`,
+      `lk_aa_change_profile`. `RLIM_INFINITY` ↔ `UINT64_MAX`.
 - [ ] `proc.c`: `lk_fork`, `lk_pipe` (`O_CLOEXEC`), `lk_dup2`,
       `lk_write_all`, `lk_wait_collect` (poll loop with slice argument,
       `EINTR` handling, drains all fds, SIGKILL on timeout, `waitpid`),
@@ -235,9 +267,9 @@ returns 0.
 
 ## Stage 3 — R layer, M1
 
-Goal: `eval_safe(readLines("/etc/passwd"), policy = preset("numeric"))`
-errors with `EACCES`, and `landlock` is a drop-in for the `unix` sandboxing
-functions.
+Goal: `unix`'s ported test suite passes against `landlock`, and
+`eval_safe(readLines("/etc/passwd"), policy = preset("numeric"))` errors with
+`EACCES`.
 
 - [ ] `rglue.c`: `.Call` wrappers for every `lk_*` entry point used by R;
       the only file including `Rinternals.h`. `init.c` registers them.
@@ -252,7 +284,18 @@ functions.
       §4 order (steps 7, 9, 11, 12 in 0.1.0), returning an `lk_report`;
       `confine()` warns, or errors unless `force = TRUE`, when
       `/proc/self/task` has more than one entry (design §17.3: go with error).
-- [ ] `R/restrict.R`, `R/limits.R`: thin wrappers with unix-compatible names.
+- [ ] The `unix` API, written against `unix` 1.6.0's formals one function at
+      a time: `R/limits.R` (`rlimit_*(cur = NULL, max = NULL)`, `rlimit_all()`,
+      `chroot(path = getwd())`), `R/process.R` (`getpid`, `getppid`, `getpgid`,
+      `setpgid`, `kill`, `getpriority`, `setpriority`, `sys_config`),
+      `R/ids.R` (the eight get/set uid/gid functions, `user_info`,
+      `group_info`), `R/apparmor.R` (`aa_config`, `aa_change_profile`).
+      `R/restrict.R` for `restrict_self()`.
+- [ ] Port `unix/tests/testthat/test-forking.R` and `test-process.R`
+      verbatim (MIT, attribution in the file header) and make them pass.
+      Add `test-unix-parity.R`: the 31-name constant from design §15 is a
+      subset of `getNamespaceExports("landlock")`, and each function's
+      `formals()` equals the recorded `unix` formals.
 - [ ] `R/eval_safe.R`: `eval_safe()` with the unix signature plus `policy`;
       `eval_fork()`; `run()` (fork, `apply_policy`, `execvp`, capture).
       Child side: `options(device = pdf)`, `tmp` honoured, fd hygiene,
@@ -260,22 +303,21 @@ functions.
       Parent side: interruptible wait, timeout → error, result-pipe
       discriminator for SIGKILL, stdout/stderr delivered to `std_out`/`std_err`
       (`NULL` discards).
-- [ ] `R/compat-unix.R`: `eval_safe`, `eval_fork`, `rlimit_*`, `setuid`,
-      `setgid`, `getuid`, `getgid`, `chroot`, `aa_*` stubs that error with a
-      pointer to 0.2.0.
 - [ ] `R/presets.R`: `preset("numeric")` etc. as R objects built from
       `.libPaths()`, `R.home()`, `tempdir()` at call time.
 - [ ] testthat (edition 3, `Config/testthat/parallel` left off because the
       tests fork): `status()` shape on every platform; `eval_safe(1 + 1)`
       with no policy on every platform including macOS; Landlock tests
       `skip_if(status()$landlock_abi == 0)`; timeout test (`Sys.sleep(5)`,
-      `timeout = 1`) errors in about 1 s and `kill(pid, 0)` says `ESRCH`;
-      pipe-deadlock regression (child writes 1 MiB); error objects cross the
-      pipe as conditions; `strict = TRUE` errors on ABI 0.
+      `timeout = 1`) errors with elapsed under 10 s (valgrind and gctorture
+      legs are slow) and `kill(pid, 0)` says `ESRCH`; pipe-deadlock regression
+      (child writes 1 MiB); error objects cross the pipe as conditions;
+      `strict = TRUE` errors on ABI 0.
 
-Exit criteria: the M1 definition of done from design §14 passes on Linux CI
-and the test suite is green on the macOS runner (everything Linux-only
-skipped with a reason).
+Exit criteria: the M1 definition of done from design §14 passes on every
+r-actions leg that runs on a PR, the ported `unix` tests are green, and the
+suite is green on the macOS runner (everything Linux-only skipped with a
+reason).
 
 ---
 
@@ -310,10 +352,14 @@ green as root (container job) and non-root (runner job).
 
 Goal: the things a CRAN reviewer or a security-minded user will probe first.
 
-- [ ] Run the whole test suite under `R -d valgrind` and with
-      `-fsanitize=address,undefined` in a container (CRAN runs both flavours
-      on packages with compiled code; forked children inherit the
-      instrumentation).
+- [ ] Label the PR `full-ci` and get every `native-checks` leg green: ASan
+      containers, valgrind, gctorture at step 20, rchk, `-fanalyzer`, LTO,
+      rcnst/rlibro/vnu. Forked children inherit the instrumentation; a child
+      killed by SIGKILL skips LeakSanitizer's exit-time report, which is
+      expected and not a finding.
+- [ ] `workflow_dispatch` the `arch` workflow and get i386, musl and aarch64
+      green: this is where the seccomp arch table, `sc_table.h` and the
+      `__NR_*` fallbacks are proven.
 - [ ] Interrupt test: start `eval_safe(Sys.sleep(10))`, send SIGINT to the
       parent from a helper, assert the child is gone within a second.
 - [ ] Zombie audit: every exit path of `eval_safe()` and `run()` reaps the
@@ -333,9 +379,10 @@ Goal: the things a CRAN reviewer or a security-minded user will probe first.
 - [ ] Check `R CMD check` wall time: examples under 5 s each, tests under
       60 s total.
 
-Exit criteria: clean valgrind and ASan/UBSan runs; interrupt, zombie and
-fd-leak tests in the suite; security review findings closed or recorded in
-`.agents/` with a reason.
+Exit criteria: `native-checks` fully green under the `full` profile and
+`arch` green on all three legs; interrupt, zombie and fd-leak tests in the
+suite; security review findings closed or recorded in `.agents/` with a
+reason.
 
 ---
 
@@ -360,7 +407,10 @@ fd-leak tests in the suite; security review findings closed or recorded in
       Kubernetes typically allow: design §11).
 - [ ] `NEWS.md`: a real 0.1.0 entry listing the public API.
 - [ ] `_pkgdown.yml`: reference index grouped as Execution / Policy /
-      Status / Low-level wrappers / unix compatibility.
+      Status / Confinement layers / Process, limits and ids (the `unix` API).
+- [ ] `getting-started` vignette opens with the migration from `unix`: what
+      is identical (everything), what is new (`policy`, the report attribute,
+      `status()`).
 - [ ] `inst/COPYRIGHTS`, `LICENSE.note` final wording.
 - [ ] `spelling::spell_check_package()` with a `inst/WORDLIST`.
 
@@ -372,12 +422,14 @@ CI and reads correctly.
 
 ## Stage 7 — CRAN readiness
 
-- [ ] `R CMD check --as-cran` on: macOS runner (Apple clang), ubuntu release
-      and oldrel-1, the three R-hub containers (r-devel, gcc 16, clang 23 with
-      `-std=gnu23 -pedantic`). Target 0 errors, 0 warnings, 0 notes other
-      than "New submission".
-- [ ] R-hub v2 extra platforms: `clang-asan`, `valgrind`, `macos-arm64`,
-      `ubuntu-release`. win-builder is irrelevant (`OS_type: unix`).
+- [ ] A `full-ci` run of `R-CMD-check` on the release candidate: macOS
+      (Apple clang, arm64), ubuntu release and oldrel-1, the three containers
+      (r-devel with gcc 16 and clang 23 at `-std=gnu23 -pedantic`). Target 0
+      errors, 0 warnings, 0 notes other than "New submission".
+- [ ] `native-checks` under `full` and a fresh `arch` dispatch, both green on
+      the same commit. This replaces R-hub: every flavour on CRAN's
+      "additional issues" page that applies to this package is covered by
+      r-actions. win-builder is irrelevant (`OS_type: unix`).
 - [ ] `urlchecker::url_check()`; `tools::checkRd` via check;
       `goodpractice::gp()` as a hint source, not a gate.
 - [ ] Run the `/cran-extrachecks` and `/review-cran-submission` skills on
@@ -430,6 +482,13 @@ flavours; `main` is on `0.1.0.9000`.
 
 - Every commit installs and passes `R CMD check` on Linux; the C harness is
   part of CI, not a local-only tool.
+- CI is the `pedrobtz/r-actions` set. A hand-written job is added only for
+  what those workflows cannot express (today: the no-R harness). A failing
+  leg is fixed in the package or, if the workflow is wrong, upstream in
+  r-actions; it is never deleted from the caller to go green.
+- The `unix` API is frozen at `unix` 1.6.0's formals. Anything new is a new
+  function or a new trailing argument with a default, never a change to an
+  existing signature.
 - The core (`ll.c sc.c caps.c lim.c proc.c`) never includes R headers and
   never gains a package-specific assumption; design §15 wants it droppable
   into `unix/src/` unchanged.

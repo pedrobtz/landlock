@@ -1,11 +1,13 @@
 # landlock — process confinement for R, in pure C
 
 Package name: `landlock` — named after its core mechanism, the way `curl`,
-`openssl`, `sodium` and `RAppArmor` are (see §16). Successor to the sandboxing
-half of `unix`: fork-then-restrict, one-way operations, result serialised back,
-timeout enforced by the parent — plus the kernel features that did not exist in
-2013: Landlock, seccomp-bpf, user/mount/net/pid namespaces, capabilities,
-cgroup v2.
+`openssl`, `sodium` and `RAppArmor` are (see §16). **The replacement for the
+`unix` package**: every function `unix` 1.6.0 exports exists here with the same
+name, arguments and behaviour (§15), so `library(landlock)` is a drop-in for
+`library(unix)`. On top of that model — fork-then-restrict, one-way operations,
+result serialised back, timeout enforced by the parent — it adds the kernel
+features that did not exist in 2013: Landlock, seccomp-bpf, user/mount/net/pid
+namespaces, capabilities, cgroup v2.
 
 Status of this document: design frozen enough to start coding. Open decisions are
 collected in §17. Revised 2026-10-06 after review against the package skeleton,
@@ -34,6 +36,10 @@ Goals
    Vendored uapi constants only (§10).
 5. Linux-first; rlimits + timeout work everywhere POSIX; confinement layers are
    Linux-only and degrade with a report.
+6. Drop-in for `unix`. The 31 exports of `unix` 1.6.0 are part of the public
+   API from 0.1.0, with `unix`'s own test suite ported and passing (§15). A
+   user who replaces `unix` with `landlock` and changes nothing else must see
+   no difference; the new layers are opt-in through `policy`.
 
 Non-goals (v1)
 
@@ -76,9 +82,12 @@ landlock/
 │   ├── caps.R             caps_*(), no_new_privs()
 │   ├── ns.R               ns_unshare(), ns_map_ids(), mount_*()
 │   ├── cgroup.R           cgroup_v2(), cgroup_limit()   (pure R: file writes)
-│   ├── limits.R           rlimit(), rlimit_*(), setids(), chroot()
+│   ├── limits.R           rlimit_*(cur, max) family, rlimit_all(), setids(), chroot()   (unix signatures)
+│   ├── process.R          getpid(), getppid(), getpgid(), setpgid(), kill(), getpriority(), setpriority(), sys_config()
+│   ├── ids.R              getuid()/setuid(), geteuid()/seteuid(), getgid()/setgid(), getegid()/setegid(), user_info(), group_info()
+│   ├── apparmor.R         aa_config(), aa_change_profile() through /proc, no libapparmor
 │   ├── eval_safe.R        eval_safe(), eval_fork(), run()
-│   └── compat-unix.R      aliases matching unix:: names
+│   └── presets.R          preset(): syscall sets and policy presets as R objects
 ├── src/
 │   ├── Makevars           PKG_CPPFLAGS = -I. -D_GNU_SOURCE
 │   ├── lk.h             internal C API — NO R headers
@@ -91,8 +100,8 @@ landlock/
 │   ├── sc.c               seccomp-bpf
 │   ├── caps.c             capabilities, no_new_privs
 │   ├── ns.c               unshare, id maps, mounts, hostname          (0.2.0)
-│   ├── lim.c              rlimit, setids, chroot
-│   ├── proc.c             fork, pipes, fd hygiene, poll-collect wait, child exit
+│   ├── lim.c              rlimit, ids (set*uid/gid, pwd/grp lookup), priority, chroot, apparmor /proc write
+│   ├── proc.c             fork, pipes, fd hygiene, poll-collect wait, child exit, kill
 │   ├── rglue.c            .Call wrappers  — the ONLY file including <Rinternals.h>
 │   └── init.c             R_registerRoutines, R_useDynamicSymbols(dll, FALSE)
 ├── tests/
@@ -280,8 +289,13 @@ for each denied nr:
 RET ALLOW
 ```
 2 instructions per syscall, well under the 4096 limit. `AUDIT_ARCH_CURRENT`
-chosen at compile time from `__x86_64__`, `__aarch64__`, `__riscv`, `__powerpc64__`
-(little-endian), `__s390x__`.
+chosen at compile time from `__x86_64__`, `__i386__`, `__aarch64__`, `__arm__`,
+`__riscv`, `__powerpc64__` (little-endian), `__s390x__`. On any other
+architecture `lk_sc_deny()` returns `-ENOTSUP` and the layer reports "skipped";
+it never compiles to a filter with a wrong or missing arch check. The x32 guard
+is emitted only under `__x86_64__`. The `arch` CI workflow (§12) runs the suite
+on i386, musl and aarch64, which are exactly the legs where this table, the
+syscall numbers in `sc_table.h` and the `__NR_*` fallbacks (§10) differ.
 
 Install: `prctl(PR_SET_NO_NEW_PRIVS,1,0,0,0)`, then
 `syscall(SYS_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog)`;
@@ -345,8 +359,17 @@ int lk_rlimit_lookup(const char *name);                 /* "as" → RLIMIT_AS */
 int lk_rlimit_get(int res, uint64_t *soft, uint64_t *hard);
 int lk_rlimit_set(int res, uint64_t soft, uint64_t hard);   /* UINT64_MAX = RLIM_INFINITY */
 int lk_setids(uid_t uid, gid_t gid);                    /* setgroups(1,&gid), setresgid, setresuid */
+int lk_setid(int which, unsigned id);                   /* LK_ID_UID, EUID, GID, EGID → setuid/seteuid/setgid/setegid (unix API) */
+int lk_setpgid(pid_t pid, pid_t pgid);
+int lk_priority_get(int *prio);                         /* getpriority(PRIO_PROCESS, 0), errno-safe */
+int lk_priority_set(int prio);
 int lk_chroot(const char *path);                        /* chroot + chdir("/") */
+int lk_aa_change_profile(const char *name);             /* single write(2) of "changeprofile <name>" to /proc/self/attr/apparmor/current, fallback /proc/self/attr/current; -ENOSYS without AppArmor */
 ```
+
+`user_info()` and `group_info()` (`getpwuid_r`, `getgrgid_r`) live in
+`rglue.c`: they build R lists and have no use outside R. `sys_config()` is
+pure R over `Sys.info()`, `getpid()` and the rlimit calls.
 
 ### 5.6 Process plumbing (`proc.c`)
 
@@ -442,8 +465,14 @@ caps_drop_all(); caps_keep(...); no_new_privs()
 ns_unshare(user = FALSE, mount = FALSE, pid = FALSE, net = FALSE, ipc = FALSE, uts = FALSE, cgroup = FALSE)
 ns_map_ids(uid = getuid(), gid = getgid())
 mount_private(); mount_bind(src, dst, readonly = TRUE); mount_tmpfs(dst, size = "64m"); mount_ro(path)
-rlimit(resource, soft, hard = soft); rlimit_as(); rlimit_cpu(); ...    # unix names
-setids(uid, gid); chroot(path); sethostname(name)
+rlimit_as(cur = NULL, max = NULL); rlimit_cpu(); rlimit_core(); rlimit_data(); rlimit_fsize();
+rlimit_memlock(); rlimit_nofile(); rlimit_nproc(); rlimit_stack(); rlimit_all()   # unix signatures: NULL = query
+setids(uid, gid); chroot(path = getwd()); sethostname(name)
+getpid(); getppid(); getpgid(); setpgid(pgid = 0); kill(pid, signal = SIGTERM)   # unix
+getpriority(); setpriority(prio); sys_config()                                    # unix
+getuid(); geteuid(); getgid(); getegid(); setuid(uid); seteuid(uid); setgid(gid); setegid(gid)  # unix
+user_info(uid = getuid()); group_info(gid = getgid())                              # unix
+aa_config(); aa_change_profile(profile)                                           # unix (RAppArmor names), /proc only
 cgroup_v2(); cgroup_limit(memory = NULL, pids = NULL, cpu = NULL)
 trace(expr, policy = NULL)     # M5: run with landlock log + seccomp RET_LOG, parse audit → suggested policy
 ```
@@ -452,13 +481,15 @@ trace(expr, policy = NULL)     # M5: run with landlock log + seccomp RET_LOG, pa
 against `unix/R/fork.R`: `expr, tmp, std_out, std_err, timeout, priority, uid,
 gid, rlimits, profile, device`) and appends `policy` as the last named argument,
 so every positional call written for `unix` keeps working. `tmp` is the child's
-temp directory as in `unix`; `device` is set in the child; `profile` errors
-unless `NULL` until the AppArmor layer lands (§15). `rlimits`, `uid`, `gid` and
-`priority` are merged into the policy as a convenience.
+temp directory as in `unix`; `device` is set in the child; `profile` is applied
+in the child by `aa_change_profile()` (a `/proc` write, no libapparmor) and
+reports "skipped" when AppArmor is absent, or errors when the named profile is
+not loaded, as `unix` does. `rlimits`, `uid`, `gid` and `priority` are merged
+into the policy as a convenience.
 
-`compat-unix.R` exports the `unix::` names (`eval_safe`, `eval_fork`,
-`rlimit_*`, `setuid`, `setgid`, `getuid`, `getgid`, `chroot`, `aa_*` stubs that
-error with "AppArmor layer not implemented; see §15") so it is a drop-in.
+The `unix` API is not a compatibility shim in a side file: those functions are
+the package's own exports, documented and tested as such (§15), living in
+`limits.R`, `process.R`, `ids.R` and `apparmor.R`.
 
 ### 6.3 `eval_safe` engine
 
@@ -658,19 +689,43 @@ Rules the suite follows so it can run on CRAN's machines:
 - Examples for one-way functions run inside `eval_safe()`; the in-session
   form is shown in `\dontrun{}`.
 
-CI matrix: the repo's reusable workflow (`pedrobtz/r-actions`) with the
-`runners` input overridden to macOS release, ubuntu release and ubuntu
-oldrel-1: its default row `windows-latest` cannot install an `OS_type: unix`
-package. The three R-hub containers stay (CRAN's r-devel Linux compilers,
-`-std=gnu23 -pedantic`). The runner job executes as a non-root user and the
-container job as root, which covers both sides of design §2 without extra
-jobs. A separate job builds and runs `tests/c` on `ubuntu-24.04` and in an
-`ubuntu:24.04` container. GitHub VM runners allow user namespaces; the
-containers do not, which is the 0.2.0 namespace test split.
+CI is `pedrobtz/r-actions` from the first commit. Every check CRAN runs on a
+package with compiled code has a reusable workflow there, so the repo carries
+thin callers and no hand-rolled matrix except the one job r-actions cannot
+express:
 
-Coverage: gcov counters flush at process exit and R-level trace counters live
-in the child's memory, so with `raise(SIGKILL)` every line executed in the
-child reports as uncovered. The badge undercounts; do not gate on it.
+| Caller (`.github/workflows/`) | r-actions workflow | Why it applies here |
+|---|---|---|
+| `R-CMD-check.yaml` | `r-cmd-check.yml` | `runners` overridden to macOS release, ubuntu release, ubuntu oldrel-1: the default `windows-latest` row cannot install an `OS_type: unix` package. Containers at default: CRAN's r-devel Linux compilers with `-std=gnu23 -pedantic`. |
+| `coverage.yaml` | `coverage.yml` with `native: true` | covr badge plus a per-file gcov table for `src/`. Both undercount child-side code (below). |
+| `native-checks.yaml` | `sanitizers.yml` (UBSan + ASan), `valgrind.yml`, `lto.yml`, `gctorture.yml`, `rchk.yml`, `analyzers.yml`, `cran-special.yml` | rchk and gctorture for `rglue.c`'s PROTECT discipline; sanitizers, valgrind and `-fanalyzer` for the core's error paths; LTO for `lk.h` drifting from its six translation units; rcnst/rlibro/vnu are CRAN's extra checks. |
+| `arch.yaml` | `arch.yml`, weekly and on dispatch | i386, musl, aarch64: the three legs where the seccomp arch constant, the syscall numbers and the `__NR_*` fallbacks differ (§5.2). Run by hand before each release. |
+| `c-harness.yaml` | hand-written | Builds and runs `tests/c` without R: on the VM runner as the runner user and as `nobody`, and in an `ubuntu:24.04` container as root with gcc and with `clang -std=gnu23 -pedantic`. |
+| `pkgdown.yaml` | r-lib template | r-actions has no pkgdown workflow. |
+
+Not used: `fuzz.yml` and `alloc-failure.yml` target parsers; `vendor.yml` and
+`vendor-upstream.yml` guard a vendored library, and `src/compat/` holds
+constants, not a library. Revisit `vendor.yml` if the compat headers ever
+become copied upstream files.
+
+Pull requests run the `quick` profile (one Linux leg, UBSan only, no valgrind,
+gctorture at step 500); pushes to `main` and PRs labelled `full-ci` run
+everything. A change that touches only `*.md` at the top level or under a dot
+directory (`.agents/`, `.github/`), `_pkgdown.yml` or `pkgdown/` skips the code
+jobs. The runner legs execute as a non-root user and the containers as root,
+which covers both sides of §2 without extra jobs; GitHub VM runners allow user
+namespaces and the containers do not, which is the 0.2.0 namespace test split.
+
+Two consequences for the tests themselves:
+- The valgrind, ASan and gctorture legs run the suite 10–50× slower. No test
+  asserts a tight wall-clock bound: "errors in about 1 s" is written as
+  "errors, and the elapsed time is under 10 s"; the child timeouts that drive
+  those tests stay short.
+- Coverage: gcov counters flush at process exit and R-level trace counters
+  live in the child's memory, so with `raise(SIGKILL)` every line executed in
+  the child reports as uncovered in both the badge and the native table. Read
+  them, do not gate on them; the C harness is where child-side coverage is
+  measured.
 
 Development host: the maintainer's workstation is macOS. Landlock, seccomp and
 capabilities only exist in a Linux VM; the dev loop is Docker (OrbStack /
@@ -691,7 +746,8 @@ Description: Evaluate R expressions or run programs in a kernel-enforced sandbox
   Builds on 'Landlock' <https://landlock.io/> (filesystem and TCP rules),
   'seccomp-bpf' (system call filters), capability dropping and resource limits,
   without external libraries. Degrades gracefully with a report when a feature
-  is unavailable. A superset of the sandboxing functions in the 'unix' package.
+  is unavailable. A drop-in replacement for the 'unix' package: every function
+  it exports is provided with the same name and arguments.
 License: MIT + file LICENSE
 Copyright: file inst/COPYRIGHTS
 OS_type: unix
@@ -717,9 +773,9 @@ which permits user-space use); `LICENSE.note` stays for human readers.
 
 | M | Deliverable | Definition of done |
 |---|---|---|
-| M1 | `ll.c`, `lim.c`, `proc.c` (incl. `lk_close_from`), `rglue.c`; `status()`, `restrict_self()`, `rlimit()`, `eval_safe()`, `run()` without pid-ns (policy = fs + net + limits + ids + timeout); presets as R objects | C harness green; `eval_safe(readLines("/etc/passwd"), policy = preset("numeric"))` errors with EACCES; pipe-deadlock and fd-hygiene tests; unix-compat aliases |
+| M1 | `ll.c`, `lim.c`, `proc.c` (incl. `lk_close_from`), `rglue.c`; the full `unix` API (§15) incl. `profile=`; `status()`, `restrict_self()`, `eval_safe()`, `run()` without pid-ns (policy = fs + net + limits + ids + timeout); presets as R objects | C harness green; `unix`'s ported test suite green; `eval_safe(readLines("/etc/passwd"), policy = preset("numeric"))` errors with EACCES; pipe-deadlock and fd-hygiene tests |
 | M2 | `sc.c`, `caps.c`; `syscalls()`, `caps()`; presets `dangerous`, `no_exec`, `no_net` | TSYNC install; seccomp test passes as non-root |
-| M3 | `ns.c`; `namespaces()`, `mounts()`; `run()` with pid-ns double fork; AppArmor `profile=` | userns + tmpfs `/tmp` in `eval_safe`; AppArmor profile for Ubuntu 24.04 shipped and documented |
+| M3 | `ns.c`; `namespaces()`, `mounts()`; `run()` with pid-ns double fork | userns + tmpfs `/tmp` in `eval_safe`; AppArmor userns profile for Ubuntu 24.04 shipped and documented |
 | M4 | `cgroup.R`; streaming stdout | memory.max honoured under systemd-run |
 | M5 | TOML policies, `read_policy()`, `write_policy()`, `explain()`, `trace()` with audit parsing | `trace()` proposes a `numeric` policy for a `lm()` call |
 
@@ -736,16 +792,48 @@ installs, plumber evaluating user code).
 
 ---
 
-## 15. Relationship to `unix` and AppArmor
+## 15. Replacing `unix`
 
-- Function names and `eval_safe()` signature are kept; `profile =` is accepted
-  and, from M3, implemented without libapparmor by writing
-  `changeprofile <name>` to `/proc/self/attr/apparmor/current` (what
-  `aa_change_profile()` does internally). Optional layer, applied between steps
-  6 and 7; skipped with a report when AppArmor is absent.
-- Jeroen Ooms may prefer an upstream PR for M1 (Landlock + rlimit); keep
-  `ll.c`/`lim.c`/`proc.c` free of package-specific assumptions so they can be
-  dropped into `unix/src/` unchanged.
+`landlock` replaces `unix`, it does not wrap it. The parity contract, checked
+by a test that holds the list below as a constant (`unix` is not a dependency):
+
+```
+aa_config chroot eval_fork eval_safe getegid geteuid getgid getpgid getpid
+getppid getpriority getuid group_info kill rlimit_all rlimit_as rlimit_core
+rlimit_cpu rlimit_data rlimit_fsize rlimit_memlock rlimit_nofile rlimit_nproc
+rlimit_stack setegid seteuid setgid setpgid setpriority setuid sys_config
+user_info
+```
+
+(`unix` 1.6.0 `NAMESPACE`, 31 exports.) For each: same name, same formals in
+the same order with the same defaults, same return shape, same error on
+failure. `rlimit_*(cur = NULL, max = NULL)` query when both are `NULL` and set
+otherwise, returning the new limits invisibly as `unix` does; `rlimit_all()`
+returns the named list. `kill(pid, signal = SIGTERM)` takes the signal
+constants `unix` exports through `tools::` (`SIGTERM`, `SIGKILL`, ...).
+
+Tests: `unix`'s `tests/testthat/test-forking.R` and `test-process.R` are
+ported verbatim (MIT), with `library(unix)` replaced, and must pass on every
+CI leg. They are the regression suite for the contract; anything `landlock`
+adds is tested separately.
+
+AppArmor without libapparmor: `aa_config()` reads
+`/sys/module/apparmor/parameters/enabled` and `/proc/self/attr/apparmor/current`
+(fallback `/proc/self/attr/current`); `aa_change_profile(name)` is a single
+`write(2)` of `changeprofile <name>` to the same file, which is what
+libapparmor's `aa_change_profile()` does internally. `eval_safe(profile=)`
+calls it in the child between steps 6 and 7 of §4. Without AppArmor the layer
+reports "skipped"; with AppArmor and an unknown profile it errors, as `unix`
+does. This is 0.1.0. The shipped `userns` profile (§11) is 0.2.0.
+
+Migration notes for `unix` users go in the `getting-started` vignette: the
+only visible differences are the extra `policy` argument on `eval_safe()`,
+the `report` attribute on its result, and a `status()` that says more.
+
+Upstream: Jeroen Ooms may prefer a PR for M1 (Landlock + rlimit); keep
+`ll.c`/`lim.c`/`proc.c` free of package-specific assumptions so they can be
+dropped into `unix/src/` unchanged. Either outcome is fine; the contract above
+holds regardless.
 
 ---
 
@@ -782,3 +870,5 @@ matter for a pure-C R package.
 9. How the forked child ends — decided: close pipes and `raise(SIGKILL)`, as `unix` does, so compiled code references no `_exit`/`exit` symbol and the first submission carries no compiled-code NOTE. Parent discriminates on the result pipe (§6.3).
 10. `eval_safe()` signature — decided: `unix`'s argument list verbatim plus `policy = NULL` appended (§6.2). The earlier draft with `policy` second broke positional compatibility.
 11. fd hygiene — decided: M1, not M4 (§11).
+12. Relationship to `unix` — decided: full replacement, all 31 exports with identical formals in 0.1.0, `unix`'s tests ported (§15). `profile=` moves from M3 to M1 because it is a `/proc` write.
+13. CI — decided: `pedrobtz/r-actions` for everything it covers from the first commit (§12); one hand-written workflow for the no-R C harness; pkgdown stays on the r-lib template.
