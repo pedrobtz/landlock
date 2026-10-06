@@ -4,6 +4,6 @@
 #define LK_SUITES_H
 #include "harness.h"
 
-#define LK_SUITE_LIST(X) /* X(suite_name) per suite; none yet */
+#define LK_SUITE_LIST(X) X(suite_ll) X(suite_lim) X(suite_proc)
 
 #endif
