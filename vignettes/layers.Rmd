@@ -8,6 +8,8 @@ vignette: >
 ---
 
 ```{r, include = FALSE}
+# Each chunk also says eval = FALSE itself, so that R CMD check, which runs
+# the code it extracts from vignettes, does not run it either.
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 

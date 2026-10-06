@@ -16,7 +16,10 @@ chroot(path = getwd())
 Changes the root directory of the calling process, then its working
 directory to the new root. Only a privileged process may call it. As the
 'unix' package notes, \code{chroot()} is not a security boundary on its own;
-combine it with a \code{\link[=policy]{policy()}}.
+combine it with a \code{\link[=policy]{policy()}}. Afterwards R can only use code already in
+memory: base R and this package are loaded before \code{\link[=eval_fork]{eval_fork()}} and
+\code{\link[=eval_safe]{eval_safe()}} fork, functions of other packages used for the first time
+are not.
 }
 \examples{
 # Root only, irreversible: shown in a throwaway child.

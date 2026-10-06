@@ -39,3 +39,10 @@ scratch_file <- function() {
   writeLines("landlock test file", f)
   f
 }
+
+# AddressSanitizer reserves terabytes of address space, so an address-space
+# limit (limits(memory =)) makes its own allocations fail.
+under_asan <- function() {
+  maps <- "/proc/self/maps"
+  file.exists(maps) && any(grepl("libasan|libclang_rt\\.asan", readLines(maps, warn = FALSE)))
+}

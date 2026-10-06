@@ -11,6 +11,8 @@ vignette: >
 # The output in this vignette depends on the kernel of the machine that
 # builds it, so the code is shown with output captured on Linux 6.17
 # (Landlock ABI 7, Ubuntu 24.04) instead of being run.
+# Each chunk also says eval = FALSE itself, so that R CMD check, which runs
+# the code it extracts from vignettes, does not run it either.
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
@@ -25,7 +27,7 @@ result. The session itself is never restricted.
 value. Errors come back with their class; output is forwarded as it arrives;
 `timeout` is a wall-clock limit that holds even inside C code.
 
-```{r}
+```{r, eval = FALSE}
 library(landlock)
 
 set.seed(1)
@@ -42,7 +44,7 @@ eval_safe(Sys.sleep(60), timeout = 2)
 Without a policy nothing is confined: this is `unix::eval_safe()`. A policy
 adds the kernel layers:
 
-```{r}
+```{r, eval = FALSE}
 eval_safe(tryCatch(readLines("/etc/hostname"), warning = conditionMessage),
           policy = preset("numeric"))
 #> [1] "cannot open file '/etc/hostname': Permission denied"
@@ -57,7 +59,7 @@ the expression when you need the reason.
 
 A policy is a list you build with verbs:
 
-```{r}
+```{r, eval = FALSE}
 p <- policy() |>
   fs(read = c(R.home(), .libPaths(), "/usr"), tmp = TRUE) |>
   net() |>
@@ -100,7 +102,7 @@ Each layer depends on the kernel. When one is missing (an old kernel, a
 container that blocks it, macOS) it is skipped, and the report says so. On a
 kernel with Landlock ABI 3 (Linux 6.2 to 6.6):
 
-```{r}
+```{r, eval = FALSE}
 eval_safe(1, policy = preset("numeric"))
 last_report()
 #> <landlock report> Landlock ABI 3 
@@ -114,7 +116,7 @@ last_report()
 When a skipped layer is not acceptable, ask for strict mode and the
 evaluation fails instead:
 
-```{r}
+```{r, eval = FALSE}
 eval_safe(1, policy = policy(best_effort = FALSE) |> net())
 #> Error: Landlock: the kernel lacks a requested feature (ABI 3) and strict mode is on
 ```
@@ -128,7 +130,7 @@ filesystem policy the program needs `exec` permission on itself and on the
 dynamic loader, which the kernel opens for execution too. The presets deny
 `execve` outright, so build the policy for the program:
 
-```{r}
+```{r, eval = FALSE}
 p <- policy() |>
   fs(read = c("/usr", "/etc/ld.so.cache"), exec = c("/usr/bin", "/usr/lib"))
 res <- run("cat", "/etc/hostname", policy = p)
