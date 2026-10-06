@@ -40,6 +40,12 @@ int lk_ll_abi(void)
     return -errno;
 }
 
+int lk_ll_errata(void)
+{
+    int r = ll_create_ruleset(NULL, 0, LK_LANDLOCK_CREATE_RULESET_ERRATA);
+    return r >= 0 ? r : -errno;
+}
+
 uint64_t lk_ll_handled_fs(int abi)
 {
     uint64_t r = 0;
@@ -217,6 +223,11 @@ out:
 int lk_ll_abi(void)
 {
     return 0;
+}
+
+int lk_ll_errata(void)
+{
+    return -ENOSYS;
 }
 
 uint64_t lk_ll_handled_fs(int abi)

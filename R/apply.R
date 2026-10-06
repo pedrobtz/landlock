@@ -17,8 +17,10 @@
 #'   layer instead of skipping it. Defaults to the policy's `best_effort`
 #'   setting.
 #' @return A report of class `lk_report`: a data frame with one row per
-#'   requested layer and the columns `layer`, `status` (`"applied"` or
-#'   `"skipped"`) and `detail`. Returned invisibly; also available as
+#'   requested layer and the columns `layer`, `status` (`"applied"`,
+#'   `"partial"` when the kernel's Landlock ABI cannot enforce every right a
+#'   write rule asks for, or `"skipped"`) and `detail`. Strict mode fails
+#'   instead of applying a partial or skipped layer. Returned invisibly; also available as
 #'   [last_report()].
 #' @examples
 #' # Irreversible, so shown in a throwaway child:
@@ -61,7 +63,13 @@ apply_policy <- function(p, strict = !isTRUE(p$best_effort)) {
       fsr <- rbind(fsr, data.frame(path = scratch, mode = fs_modes[["read"]] + fs_modes[["write"]],
                                    stringsAsFactors = FALSE))
     }
-    rules <- landlock_rules(fsr)
+    rules <- landlock_rules(fsr, missing_ok = identical(p$fs_missing, "ignore"))
+    ignored <- attr(rules, "missing")
+    kernel_abi <- if (abi > 0L) min(abi, if (force_abi() > 0L) force_abi() else abi) else abi
+    gaps <- if (want_fs && kernel_abi > 0L) unenforced_rights(kernel_abi, rules$mode) else character()
+    if (length(gaps) && strict)
+      stop("Landlock ABI ", kernel_abi, " cannot enforce: ", paste(gaps, collapse = ", "),
+           ", and strict mode is on", call. = FALSE)
     log <- if (is.null(p$log)) 0L else if (isTRUE(p$log)) 2L else 1L
     flags <- c(want_fs, want_net, want_scope && p$scope$signal, want_scope && p$scope$abstract_unix,
                log, !strict, force_abi())
@@ -70,9 +78,12 @@ apply_policy <- function(p, strict = !isTRUE(p$best_effort)) {
     used <- r[[1]]
     abi <- used  # the report header shows the ABI the rules were written for
     none <- if (used == 0L) "Landlock is not available on this kernel" else NULL
-    if (want_fs)
-      add("landlock-fs", if (r[[2]]) "applied" else "skipped",
-          none %||% sprintf("ABI %d, %d rule%s", used, nrow(rules), if (nrow(rules) == 1L) "" else "s"))
+    if (want_fs) {
+      detail <- none %||% sprintf("ABI %d, %d rule%s", used, nrow(rules), if (nrow(rules) == 1L) "" else "s")
+      if (r[[2]] && length(gaps)) detail <- paste0(detail, "; not enforced at this ABI: ", paste(gaps, collapse = ", "))
+      if (length(ignored)) detail <- paste0(detail, "; missing, ignored: ", paste(ignored, collapse = ", "))
+      add("landlock-fs", if (!r[[2]]) "skipped" else if (length(gaps)) "partial" else "applied", detail)
+    }
     if (want_net)
       add("landlock-net", if (r[[3]]) "applied" else "skipped",
           none %||% if (r[[3]]) sprintf("TCP bind: %s; connect: %s", ports_text(p$net$bind), ports_text(p$net$connect))
@@ -96,6 +107,18 @@ apply_policy <- function(p, strict = !isTRUE(p$best_effort)) {
     }
   }
 
+  # Memory-deny-write-execute (prctl; before seccomp, which may restrict prctl).
+  if (isTRUE(p$mdwe)) {
+    rc <- if (is_linux()) .Call(C_mdwe_set) else -1L
+    if (rc == 0L) {
+      add("memory", "applied", "no writable and executable mappings")
+    } else if (strict) {
+      stop("memory-deny-write-execute is not available (needs Linux 6.3)", call. = FALSE)
+    } else {
+      add("memory", "skipped", "memory-deny-write-execute needs Linux 6.3")
+    }
+  }
+
   # seccomp (step 10): last of the one-way filters, so it can deny what the
   # earlier steps used (landlock_*, unshare, mount).
   if (!is.null(p$syscalls)) {
@@ -108,6 +131,8 @@ apply_policy <- function(p, strict = !isTRUE(p$best_effort)) {
   # CAP_SETUID.
   if (!is.null(p$ids) && !(is.na(p$ids$uid) && is.na(p$ids$gid))) {
     .Call(C_setids, p$ids$uid, p$ids$gid)
+    # A credential change clears die-with-parent: arm it again.
+    .Call(C_rearm_pdeathsig)
     add("ids", "applied", sprintf("uid %s, gid %s", p$ids$uid, p$ids$gid))
   }
 
@@ -182,14 +207,26 @@ force_abi <- function() {
 ports_text <- function(v) if (length(v)) paste(v, collapse = ", ") else "none"
 
 # One rule per existing path, modes merged; paths must exist.
-landlock_rules <- function(fs) {
+landlock_rules <- function(fs, missing_ok = FALSE) {
   if (is.null(fs) || !nrow(fs)) return(data.frame(path = character(), mode = integer()))
   missing <- fs$path[!file.exists(fs$path)]
-  if (length(missing))
+  if (length(missing) && !missing_ok)
     stop("fs(): path does not exist: ", paste(unique(missing), collapse = ", "), call. = FALSE)
+  fs <- fs[file.exists(fs$path), , drop = FALSE]
+  if (!nrow(fs)) return(structure(data.frame(path = character(), mode = integer()),
+                                  missing = unique(missing)))
   path <- normalizePath(fs$path, mustWork = TRUE)
   mode <- tapply(fs$mode, path, function(m) Reduce(bitwOr, m))
-  data.frame(path = names(mode), mode = as.integer(mode), stringsAsFactors = FALSE)
+  structure(data.frame(path = names(mode), mode = as.integer(mode), stringsAsFactors = FALSE),
+            missing = unique(missing))
+}
+
+# Rights a write rule asks for that an older Landlock ABI cannot enforce
+# (design.md section 9): what "partial" means in the report.
+unenforced_rights <- function(abi, modes) {
+  if (!any(bitwAnd(modes, fs_modes[["write"]]) != 0L)) return(character())
+  need <- c("rename and link across directories" = 2L, truncate = 3L, "device ioctl" = 5L)
+  names(need)[abi < need]
 }
 
 #' @rdname apply_policy

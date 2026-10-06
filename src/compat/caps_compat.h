@@ -31,6 +31,12 @@ struct lk_cap_data {     /* struct __user_cap_data_struct, two of them for v3 */
 #ifndef PR_CAP_AMBIENT
 #define PR_CAP_AMBIENT 47
 #endif
+#ifndef PR_SET_MDWE
+#define PR_SET_MDWE 65                 /* Linux 6.3 */
+#endif
+#ifndef PR_MDWE_REFUSE_EXEC_GAIN
+#define PR_MDWE_REFUSE_EXEC_GAIN (1UL << 0)
+#endif
 #ifndef PR_CAP_AMBIENT_CLEAR_ALL
 #define PR_CAP_AMBIENT_CLEAR_ALL 4
 #endif

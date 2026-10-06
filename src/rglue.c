@@ -15,9 +15,13 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #ifdef __linux__
 #include <sched.h>
+#include <sys/prctl.h>
 #include <sys/syscall.h>
 #endif
 
@@ -133,9 +137,11 @@ SEXP C_sc_lookup(SEXP names)
     return out;
 }
 
-/* nrs, actions, errnums: one per rule. Returns c(rc, tsync): rc 0, or
- * -errno for the R side to report. */
-SEXP C_sc_install(SEXP nrs, SEXP actions, SEXP errnums, SEXP deny_clone_ns)
+/* nrs, actions, errnums, args, negates: one per rule; vals: a list with one
+ * integer vector per rule (ignored when args[i] is -1). Returns c(rc, tsync):
+ * rc 0, or -errno for the R side to report. */
+SEXP C_sc_install(SEXP nrs, SEXP actions, SEXP errnums, SEXP args, SEXP negates, SEXP vals,
+                  SEXP deny_clone_ns)
 {
     R_xlen_t n = XLENGTH(nrs);
     struct lk_sc_rule *rules = (struct lk_sc_rule *) R_alloc((size_t) n + 1, sizeof *rules);
@@ -143,6 +149,19 @@ SEXP C_sc_install(SEXP nrs, SEXP actions, SEXP errnums, SEXP deny_clone_ns)
         rules[i].nr = INTEGER(nrs)[i];
         rules[i].action = INTEGER(actions)[i];
         rules[i].errnum = INTEGER(errnums)[i];
+        rules[i].arg = INTEGER(args)[i];
+        rules[i].negate = INTEGER(negates)[i];
+        rules[i].nvals = 0;
+        rules[i].vals = NULL;
+        if (rules[i].arg >= 0) {
+            SEXP v = VECTOR_ELT(vals, i);
+            R_xlen_t nv = XLENGTH(v);
+            uint32_t *u = (uint32_t *) R_alloc((size_t) nv + 1, sizeof *u);
+            for (R_xlen_t j = 0; j < nv; j++)
+                u[j] = (uint32_t) REAL(v)[j];
+            rules[i].nvals = (size_t) nv;
+            rules[i].vals = u;
+        }
     }
     int tsync = 0;
     int rc = lk_sc_install(rules, (size_t) n, Rf_asLogical(deny_clone_ns) == TRUE, &tsync);
@@ -163,7 +182,7 @@ SEXP C_errno_value(SEXP name)
         { "EPERM", EPERM }, { "EACCES", EACCES }, { "ENOSYS", ENOSYS },
         { "EINVAL", EINVAL }, { "ENOTSUP", ENOTSUP }, { "EOPNOTSUPP", EOPNOTSUPP },
         { "EAGAIN", EAGAIN }, { "ENOMEM", ENOMEM }, { "EIO", EIO },
-        { "EFAULT", EFAULT },
+        { "EFAULT", EFAULT }, { "EAFNOSUPPORT", EAFNOSUPPORT },
     };
     const char *s = CHAR(STRING_ELT(name, 0));
     for (size_t i = 0; i < sizeof tbl / sizeof tbl[0]; i++)
@@ -202,6 +221,55 @@ SEXP C_nnp_get(void)
 {
     int r = lk_nnp_get();
     return Rf_ScalarLogical(r < 0 ? NA_LOGICAL : r);
+}
+
+SEXP C_mdwe_set(void)
+{
+    return Rf_ScalarInteger(lk_mdwe_set());
+}
+
+SEXP C_ll_errata(void)
+{
+    int e = lk_ll_errata();
+    return Rf_ScalarInteger(e < 0 ? NA_INTEGER : e);
+}
+
+/* The ioctl requests that inject input into, or reprogram, a terminal. */
+SEXP C_tty_ioctls(void)
+{
+    SEXP out = Rf_allocVector(REALSXP, 2);
+#ifdef TIOCSTI
+    REAL(out)[0] = (double) TIOCSTI;
+#else
+    REAL(out)[0] = NA_REAL;
+#endif
+#ifdef TIOCLINUX
+    REAL(out)[1] = (double) TIOCLINUX;
+#else
+    REAL(out)[1] = NA_REAL;
+#endif
+    return out;
+}
+
+SEXP C_af_value(SEXP name)
+{
+    static const struct { const char *name; int value; } tbl[] = {
+        { "unix", AF_UNIX }, { "inet", AF_INET }, { "inet6", AF_INET6 },
+#ifdef AF_NETLINK
+        { "netlink", AF_NETLINK },
+#endif
+#ifdef AF_PACKET
+        { "packet", AF_PACKET },
+#endif
+#ifdef AF_VSOCK
+        { "vsock", AF_VSOCK },
+#endif
+    };
+    const char *s = CHAR(STRING_ELT(name, 0));
+    for (size_t i = 0; i < sizeof tbl / sizeof tbl[0]; i++)
+        if (strcmp(tbl[i].name, s) == 0)
+            return Rf_ScalarInteger(tbl[i].value);
+    return Rf_ScalarInteger(NA_INTEGER);
 }
 
 SEXP C_strerror(SEXP err)
@@ -428,8 +496,10 @@ SEXP C_group_info(SEXP input)
 
 /* ---- fork, evaluate, collect (design.md section 6.3) ------------------- */
 
-/* The child's end of the result pipe; set only in a forked child. */
+/* The child's end of the result pipe, and the session's pid; set only in a
+ * forked child. */
 static int child_result_fd = -1;
+static pid_t child_parent_pid = 0;
 
 static double monotonic(void)
 {
@@ -489,8 +559,9 @@ struct parent_state {
     struct lk_buf bufs[3];
     SEXP outfun, errfun;
     double timeout, t0;
+    double grace, term_at;  /* seconds between SIGTERM and SIGKILL on timeout */
     double max_result;      /* bytes allowed on the result pipe */
-    int status, done, killed, timed_out, oversize, rc;
+    int status, done, killed, termed, timed_out, oversize, rc;
 };
 
 static void kill_child(struct parent_state *st)
@@ -562,9 +633,20 @@ static SEXP parent_body(void *data)
         deliver(st->errfun, &st->bufs[2]);
         if (st->done || st->killed)
             continue;
-        if (st->timeout > 0 && monotonic() - st->t0 > st->timeout) {
+        if (st->termed) {
+            if (monotonic() - st->term_at > st->grace)
+                kill_child(st);
+        } else if (st->timeout > 0 && monotonic() - st->t0 > st->timeout) {
             st->timed_out = 1;
-            kill_child(st);
+            if (st->grace > 0) {
+                /* A chance to clean up first: SIGTERM, SIGKILL after grace. */
+                kill(-st->pid, SIGTERM);
+                kill(st->pid, SIGTERM);
+                st->termed = 1;
+                st->term_at = monotonic();
+            } else {
+                kill_child(st);
+            }
             continue;
         }
         R_CheckUserInterrupt();
@@ -586,7 +668,7 @@ static void parent_cleanup(void *data, Rboolean jump)
  * Returns list(buffer = raw result-pipe bytes (frames), status, signal,
  * exit_code, timed_out). */
 SEXP C_fork_eval(SEXP fun, SEXP timeout, SEXP outfun, SEXP errfun, SEXP close_fds,
-                 SEXP max_result)
+                 SEXP max_result, SEXP stdin_path, SEXP grace)
 {
     /* Allocate everything R before fork(): an allocation error after it
      * would longjmp the child into a copy of the parent's toplevel. */
@@ -595,6 +677,9 @@ SEXP C_fork_eval(SEXP fun, SEXP timeout, SEXP outfun, SEXP errfun, SEXP close_fd
     int do_close = Rf_asLogical(close_fds) == TRUE;
     double limit = Rf_asReal(max_result);
     double tmo = Rf_asReal(timeout);
+    double grace_s = Rf_asReal(grace);
+    const char *in_path = Rf_isString(stdin_path) ? Rf_translateChar(STRING_ELT(stdin_path, 0)) : NULL;
+    pid_t self = getpid();
 
     int res[2], out[2], err[2];
     int rc = lk_pipe(res);
@@ -622,17 +707,38 @@ SEXP C_fork_eval(SEXP fun, SEXP timeout, SEXP outfun, SEXP errfun, SEXP close_fd
     }
 
     if (pid == 0) {
-        setpgid(0, 0);  /* the terminal's SIGINT goes to the parent, which kills us */
+        /* A session of our own: a new process group (the terminal's SIGINT
+         * goes to the parent, which kills us) and no controlling terminal,
+         * so no input can be injected into the user's terminal (TIOCSTI). */
+        lk_new_session();
         close(res[0]);
         close(out[0]);
         close(err[0]);
         /* Setup must not fail open: a child that keeps the parent's
          * terminal or inherited files ends here, before any user code. */
         const char *failed = NULL;
-        if (lk_devnull_stdin() != 0)
+        /* Die with the session: the session enforces the timeout. */
+        int dp = lk_die_with_parent(self);
+        if (dp == -ESRCH)
+            failed = "the R session exited before the child started";
+        else
+            child_parent_pid = self;
+        /* Standard input: the given file (opened now, before the policy,
+         * like a shell redirection) or /dev/null. */
+        if (!failed && in_path) {
+            int fd = open(in_path, O_RDONLY);
+            if (fd < 0 || lk_dup2(fd, 0) != 0)
+                failed = "opening the stdin file";
+            if (fd > 0)
+                close(fd);
+        } else if (!failed && lk_devnull_stdin() != 0) {
             failed = "redirecting standard input to /dev/null";
-        else if (lk_dup2(out[1], 1) != 0 || lk_dup2(err[1], 2) != 0)
-            failed = "redirecting standard output and error";
+        }
+        /* Standard output and error: the pipes, whatever happened above. */
+        if (lk_dup2(out[1], 1) != 0 || lk_dup2(err[1], 2) != 0) {
+            if (!failed)
+                failed = "redirecting standard output and error";
+        }
         if (out[1] != 1)
             close(out[1]);
         if (err[1] != 2)
@@ -652,7 +758,9 @@ SEXP C_fork_eval(SEXP fun, SEXP timeout, SEXP outfun, SEXP errfun, SEXP close_fd
         lk_child_exit(&d.fd, 1);
     }
 
-    setpgid(pid, pid);  /* also from this side, closing the race with the child */
+    /* No setpgid() from this side: it would make the child a group leader
+     * and its setsid() would then fail. Until the child has called setsid(),
+     * kill(-pid) finds no group; kill_child() also signals pid itself. */
     close(res[1]);
     close(out[1]);
     close(err[1]);
@@ -666,6 +774,7 @@ SEXP C_fork_eval(SEXP fun, SEXP timeout, SEXP outfun, SEXP errfun, SEXP close_fd
     st.outfun = outfun;
     st.errfun = errfun;
     st.timeout = tmo;
+    st.grace = grace_s > 0 ? grace_s : 0;
     st.max_result = limit;
     st.t0 = monotonic();
     for (int i = 0; i < 3; i++)
@@ -749,7 +858,84 @@ SEXP C_strsignal(SEXP sig)
     return Rf_mkString(s ? s : "unknown signal");
 }
 
+/* In a forked child, after a credential change (which clears it): arm
+ * die-with-parent again. */
+SEXP C_rearm_pdeathsig(void)
+{
+    if (child_parent_pid <= 0)
+        return Rf_ScalarLogical(FALSE);
+    int rc = lk_die_with_parent(child_parent_pid);
+    if (rc == -ESRCH)
+        Rf_error("the R session exited");
+    return Rf_ScalarLogical(rc == 0);
+}
+
 /* ---- test helpers (internal, used by tests/testthat) ------------------- */
+
+/* ioctl(0, TIOCSTI): 0 or -errno. */
+SEXP C_test_tiocsti(void)
+{
+#ifdef TIOCSTI
+    char c = ' ';
+    return Rf_ScalarInteger(ioctl(0, TIOCSTI, &c) == 0 ? 0 : -errno);
+#else
+    return Rf_ScalarInteger(NA_INTEGER);
+#endif
+}
+
+/* socket(family, SOCK_STREAM): 0 (and closed) or -errno. */
+SEXP C_test_socket(SEXP family)
+{
+    int s = socket(Rf_asInteger(family), SOCK_STREAM, 0);
+    if (s < 0)
+        return Rf_ScalarInteger(-errno);
+    close(s);
+    return Rf_ScalarInteger(0);
+}
+
+/* A writable and executable anonymous mapping: 0 or -errno. */
+SEXP C_test_mmap_wx(void)
+{
+    void *m = mmap(NULL, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (m == MAP_FAILED)
+        return Rf_ScalarInteger(-errno);
+    munmap(m, 4096);
+    return Rf_ScalarInteger(0);
+}
+
+/* personality(value): the result, or -errno. */
+SEXP C_test_personality(SEXP value)
+{
+#ifdef __linux__
+    long r = syscall(SYS_personality, (unsigned long) (uint32_t) Rf_asReal(value));
+    return Rf_ScalarInteger(r < 0 ? -errno : (int) r);
+#else
+    (void) value;
+    return Rf_ScalarInteger(NA_INTEGER);
+#endif
+}
+
+/* The signal armed by PR_SET_PDEATHSIG (0 for none); NA off Linux. */
+SEXP C_test_pdeathsig(void)
+{
+#ifdef __linux__
+    int sig = 0;
+    if (prctl(PR_GET_PDEATHSIG, &sig, 0, 0, 0) != 0)
+        return Rf_ScalarInteger(-errno);
+    return Rf_ScalarInteger(sig);
+#else
+    return Rf_ScalarInteger(NA_INTEGER);
+#endif
+}
+
+/* 1 when the process has a controlling terminal it can open. */
+SEXP C_test_has_tty(void)
+{
+    int fd = open("/dev/tty", O_RDWR);
+    if (fd >= 0)
+        close(fd);
+    return Rf_ScalarLogical(fd >= 0);
+}
 
 SEXP C_test_open_fd(SEXP path)
 {

@@ -81,14 +81,21 @@ int lk_sc_install(const struct lk_sc_rule *rules, size_t n, int deny_clone_ns, i
     (void) rules; (void) n; (void) deny_clone_ns;
     return -ENOTSUP;
 #else
-    size_t max = 6 + 5 + 2 * n + 1;
-    if (max > 4096)
-        return -E2BIG;
+    size_t max = 6 + 5 + 1;
     for (size_t i = 0; i < n; i++) {
         uint32_t ret;
         if (rule_ret(&rules[i], &ret) != 0)
             return -EINVAL;
+        if (rules[i].arg < 0) {
+            max += 2;
+        } else {
+            if (rules[i].arg > 5 || rules[i].nvals < 1 || rules[i].nvals > 200)
+                return -EINVAL;
+            max += rules[i].nvals + 4;
+        }
     }
+    if (max > 4096)
+        return -E2BIG;
     struct lk_sock_filter *f = malloc(max * sizeof *f);
     if (!f)
         return -ENOMEM;
@@ -117,10 +124,32 @@ int lk_sc_install(const struct lk_sc_rule *rules, size_t n, int deny_clone_ns, i
     (void) deny_clone_ns;
 #endif
     for (size_t i = 0; i < n; i++) {
+        const struct lk_sc_rule *r = &rules[i];
         uint32_t ret;
-        rule_ret(&rules[i], &ret);
-        f[k++] = jump(LK_BPF_JMP | LK_BPF_JEQ | LK_BPF_K, (uint32_t) rules[i].nr, 0, 1);
+        rule_ret(r, &ret);
+        if (r->arg < 0) {
+            f[k++] = jump(LK_BPF_JMP | LK_BPF_JEQ | LK_BPF_K, (uint32_t) r->nr, 0, 1);
+            f[k++] = stmt(LK_BPF_RET | LK_BPF_K, ret);
+            continue;
+        }
+        /* Argument condition: compare the low 32 bits of args[arg] with
+         * each value. Not this call: skip the load, the comparisons and the
+         * return, landing on the reload of nr. A match returns the action
+         * (or, negated, skips it); falling through does the opposite. */
+        size_t nv = r->nvals;
+        f[k++] = jump(LK_BPF_JMP | LK_BPF_JEQ | LK_BPF_K, (uint32_t) r->nr, 0, (uint8_t) (nv + 2));
+        f[k++] = stmt(LK_BPF_LD | LK_BPF_W | LK_BPF_ABS, LK_SECCOMP_ARG_LO(r->arg));
+        for (size_t j = 0; j < nv; j++) {
+            uint8_t to_ret = (uint8_t) (nv - 1 - j);
+            if (!r->negate)
+                f[k++] = jump(LK_BPF_JMP | LK_BPF_JEQ | LK_BPF_K, r->vals[j], to_ret,
+                              (uint8_t) (j == nv - 1 ? 1 : 0));
+            else
+                f[k++] = jump(LK_BPF_JMP | LK_BPF_JEQ | LK_BPF_K, r->vals[j],
+                              (uint8_t) (to_ret + 1), 0);
+        }
         f[k++] = stmt(LK_BPF_RET | LK_BPF_K, ret);
+        f[k++] = stmt(LK_BPF_LD | LK_BPF_W | LK_BPF_ABS, LK_SECCOMP_DATA_NR);
     }
     f[k++] = stmt(LK_BPF_RET | LK_BPF_K, LK_SECCOMP_RET_ALLOW);
 
@@ -173,6 +202,10 @@ int lk_sc_deny(const int *nrs, size_t n, int action, int errnum, int *tsync)
         rules[i].nr = nrs[i];
         rules[i].action = action;
         rules[i].errnum = errnum;
+        rules[i].arg = -1;
+        rules[i].negate = 0;
+        rules[i].nvals = 0;
+        rules[i].vals = NULL;
     }
     int rc = lk_sc_install(rules, n, 0, tsync);
     free(rules);

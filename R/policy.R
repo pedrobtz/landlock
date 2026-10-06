@@ -34,6 +34,10 @@
 #'   Calling `syscalls()` again adds to the list.
 #' * `caps()`: drop every capability except `keep` and set `no_new_privs`;
 #'   see [caps_drop_all()].
+#' * `deny_write_execute()`: no memory mapping may become both writable and
+#'   executable (Linux 6.3, `PR_SET_MDWE`), which stops code injected into
+#'   writable memory from running. Breaks just-in-time compilers (V8, LLVM);
+#'   no preset uses it.
 #'
 #' @param best_effort If `TRUE` (the default), layers the kernel cannot
 #'   provide are skipped and reported. If `FALSE`, applying the policy fails
@@ -58,8 +62,9 @@ policy <- function(best_effort = TRUE, log = NULL) {
 }
 
 new_policy <- function(best_effort = TRUE, log = NULL) {
-  structure(list(fs = NULL, fs_tmp = FALSE, net = NULL, scope = NULL, limits = NULL,
-                 ids = NULL, apparmor = NULL, syscalls = NULL, caps = NULL,
+  structure(list(fs = NULL, fs_tmp = FALSE, fs_missing = "error", net = NULL, scope = NULL,
+                 limits = NULL, ids = NULL, apparmor = NULL, syscalls = NULL, caps = NULL,
+                 mdwe = FALSE,
                  best_effort = best_effort, log = log),
             class = "lk_policy")
 }
@@ -74,14 +79,19 @@ fs_modes <- c(read = 1L, write = 2L, exec = 4L)
 #' @rdname policy
 #' @param p A policy.
 #' @param read,write,exec,rw Character vectors of paths.
+#' @param missing What to do, when the policy is applied, with a path that
+#'   does not exist: `"error"` (the default) or `"ignore"` it, naming it in
+#'   the report. Useful for policies shared between machines.
 #' @param tmp If `TRUE`, also allow reading and writing the call's own
 #'   temporary directory: `tmp` of [eval_safe()], the child's `TMPDIR`. It is
 #'   created for the call and, by default, removed afterwards. The session's
 #'   [tempdir()] is deliberately not granted: the session may later trust
 #'   what it finds there.
 #' @export
-fs <- function(p, read = NULL, write = NULL, exec = NULL, rw = NULL, tmp = FALSE) {
+fs <- function(p, read = NULL, write = NULL, exec = NULL, rw = NULL, tmp = FALSE,
+               missing = c("error", "ignore")) {
   check_policy(p)
+  p$fs_missing <- match.arg(missing)
   stopifnot(is.logical(tmp), length(tmp) == 1L, !is.na(tmp))
   if (tmp) p$fs_tmp <- TRUE
   add <- function(paths, mode) {
@@ -136,15 +146,25 @@ set_scope <- function(p, signal, abstract_unix) {
 #' @rdname policy
 #' @param memory,cpu,fsize,nofile,pids,core,stack,data,memlock Resource
 #'   ceilings; `NULL` leaves a resource alone.
+#' @param rss,locks,sigpending,msgqueue,nice,rtprio,rttime Further
+#'   resource limits (Linux): resident set size, file locks, queued signals,
+#'   bytes in POSIX message queues, the nice ceiling (as `20 - value`),
+#'   real-time priority (`0` forbids real-time scheduling) and real-time CPU
+#'   time in microseconds. A limit the platform lacks is skipped and reported.
 #' @export
 limits <- function(p, memory = NULL, cpu = NULL, fsize = NULL, nofile = NULL, pids = NULL,
-                   core = NULL, stack = NULL, data = NULL, memlock = NULL) {
+                   core = NULL, stack = NULL, data = NULL, memlock = NULL, rss = NULL,
+                   locks = NULL, sigpending = NULL, msgqueue = NULL, nice = NULL,
+                   rtprio = NULL, rttime = NULL) {
   check_policy(p)
   new <- list(as = parse_size(memory, "memory"), cpu = parse_size(cpu, "cpu"),
               fsize = parse_size(fsize, "fsize"), nofile = parse_size(nofile, "nofile"),
               nproc = parse_size(pids, "pids"), core = parse_size(core, "core"),
               stack = parse_size(stack, "stack"), data = parse_size(data, "data"),
-              memlock = parse_size(memlock, "memlock"))
+              memlock = parse_size(memlock, "memlock"), rss = parse_size(rss, "rss"),
+              locks = parse_size(locks, "locks"), sigpending = parse_size(sigpending, "sigpending"),
+              msgqueue = parse_size(msgqueue, "msgqueue"), nice = parse_size(nice, "nice"),
+              rtprio = parse_size(rtprio, "rtprio"), rttime = parse_size(rttime, "rttime"))
   new <- new[!vapply(new, is.null, logical(1))]
   old <- p$limits %||% list()
   old[names(new)] <- new
@@ -183,6 +203,14 @@ resolve_id <- function(x, kind) {
 }
 
 #' @rdname policy
+#' @export
+deny_write_execute <- function(p) {
+  check_policy(p)
+  p$mdwe <- TRUE
+  p
+}
+
+#' @rdname policy
 #' @param profile Name of an AppArmor profile.
 #' @export
 apparmor <- function(p, profile) {
@@ -195,11 +223,32 @@ apparmor <- function(p, profile) {
 #' @rdname policy
 #' @param deny Character vector of system call names.
 #' @param action,errno See [seccomp_deny()].
+#' @param block_tty If `TRUE`, refuse the `ioctl()` requests that push input
+#'   into a terminal or reprogram it (`TIOCSTI`, `TIOCLINUX`), as Flatpak
+#'   does.
+#' @param socket_families If not `NULL`, `socket()` may only create sockets
+#'   of these families (any of `"unix"`, `"inet"`, `"inet6"`, `"netlink"`,
+#'   `"packet"`, `"vsock"`); others fail with `EAFNOSUPPORT`. On i386, where
+#'   `socketcall()` hides the family, `socketcall()` is refused outright.
+#' @param lock_personality If `TRUE`, `personality()` may only query or set
+#'   the default execution domains, as in Docker's profile: no turning off
+#'   address-space randomisation.
 #' @export
-syscalls <- function(p, deny, action = c("errno", "kill", "log", "trap"), errno = "EPERM") {
+syscalls <- function(p, deny = character(), action = c("errno", "kill", "log", "trap"),
+                     errno = "EPERM", block_tty = FALSE, socket_families = NULL,
+                     lock_personality = FALSE) {
   check_policy(p)
   spec <- syscall_spec(deny, action, errno)
-  if (!is.null(p$syscalls)) spec$deny <- unique(c(p$syscalls$deny, spec$deny))
+  stopifnot(is.logical(block_tty), length(block_tty) == 1L, !is.na(block_tty),
+            is.logical(lock_personality), length(lock_personality) == 1L, !is.na(lock_personality))
+  if (!is.null(socket_families)) {
+    socket_families <- match.arg(socket_families, names(sc_families), several.ok = TRUE)
+  }
+  old <- p$syscalls
+  if (!is.null(old)) spec$deny <- unique(c(old$deny, spec$deny))
+  spec$block_tty <- block_tty || isTRUE(old$block_tty)
+  spec$lock_personality <- lock_personality || isTRUE(old$lock_personality)
+  spec$socket_families <- socket_families %||% old$socket_families
   p$syscalls <- spec
   p
 }
@@ -243,7 +292,14 @@ print.lk_policy <- function(x, ...) {
     cat("  limits   ", paste(shown, collapse = ", "), "\n")
   }
   if (!is.null(x$ids)) cat("  ids       uid", x$ids$uid, "gid", x$ids$gid, "\n")
-  if (length(x$syscalls)) cat("  syscalls  deny", length(x$syscalls$deny), "calls, action", x$syscalls$action, "\n")
+  if (length(x$syscalls)) {
+    extra <- c(if (isTRUE(x$syscalls$block_tty)) "terminal injection blocked",
+               if (length(x$syscalls$socket_families)) paste("sockets:", paste(x$syscalls$socket_families, collapse = ", ")),
+               if (isTRUE(x$syscalls$lock_personality)) "personality locked")
+    cat("  syscalls  deny", length(x$syscalls$deny), "calls, action", x$syscalls$action,
+        if (length(extra)) paste0("; ", paste(extra, collapse = "; ")), "\n")
+  }
+  if (isTRUE(x$mdwe)) cat("  memory    no writable and executable mappings\n")
   if (!is.null(x$caps)) cat("  caps      keep", if (length(x$caps$keep)) paste(x$caps$keep, collapse = ", ") else "none", "\n")
   invisible(x)
 }

@@ -9,6 +9,8 @@
 #'   \item{os, kernel}{Operating system and kernel release.}
 #'   \item{landlock_abi}{Landlock ABI version; 0 when Landlock is not
 #'     available (older kernel, not built, or disabled at boot).}
+#'   \item{landlock_errata}{Bitmask of Landlock fixes the kernel reports
+#'     (Linux 6.15 and later), `NA` where the kernel cannot say.}
 #'   \item{seccomp, seccomp_filters}{Seccomp mode of this process (0 none,
 #'     1 strict, 2 filter) and the number of filters installed.}
 #'   \item{no_new_privs}{Whether `no_new_privs` is already set.}
@@ -17,6 +19,10 @@
 #'   \item{cgroup}{cgroup version, this process's cgroup and whether it is
 #'     delegated (writable).}
 #'   \item{apparmor}{Whether AppArmor is enabled and the current profile.}
+#'   \item{tiocsti_legacy}{Whether the kernel still lets an unprivileged
+#'     process push input into a terminal with `TIOCSTI`
+#'     (`dev.tty.legacy_tiocsti`); `NA` where the setting does not exist.
+#'     Confined children run without a controlling terminal either way.}
 #' }
 #' Values that do not apply on this system are `NA`.
 #' @export
@@ -32,6 +38,7 @@ status <- function() {
     os = info[["sysname"]],
     kernel = info[["release"]],
     landlock_abi = .Call(C_ll_abi),
+    landlock_errata = .Call(C_ll_errata),
     seccomp = suppressWarnings(as.integer(field("Seccomp"))),
     seccomp_filters = suppressWarnings(as.integer(field("Seccomp_filters"))),
     no_new_privs = as.logical(suppressWarnings(as.integer(field("NoNewPrivs")))),
@@ -43,7 +50,8 @@ status <- function() {
       works = .Call(C_userns_works)
     ),
     cgroup = cgroup_info(),
-    apparmor = apparmor_info()
+    apparmor = apparmor_info(),
+    tiocsti_legacy = as.logical(read_int("/proc/sys/dev/tty/legacy_tiocsti"))
   )
   structure(out, class = "lk_status")
 }
@@ -104,6 +112,8 @@ print.lk_status <- function(x, ...) {
   cat("  user ns       ", yn(x$userns$works), "\n")
   cat("  cgroup        ", if (x$cgroup$version == 0L) "none" else paste0("v", x$cgroup$version),
       if (isTRUE(x$cgroup$delegated)) "(delegated)", "\n")
+  if (!is.na(x$tiocsti_legacy))
+    cat("  TIOCSTI       ", if (x$tiocsti_legacy) "allowed (legacy)" else "restricted", "\n")
   cat("  AppArmor      ", if (isTRUE(x$apparmor$enabled))
       paste0("enabled, profile ", x$apparmor$profile,
              if (!is.na(x$apparmor$mode)) paste0(" (", x$apparmor$mode, ")")) else "not enabled", "\n")

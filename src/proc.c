@@ -15,6 +15,7 @@
 
 #ifdef __linux__
 #include <sched.h>
+#include <sys/prctl.h>
 #endif
 
 pid_t lk_fork(void)
@@ -293,6 +294,27 @@ void lk_child_exit(const int *fds, size_t nfds)
             close(fds[i]);
     for (;;)
         raise(SIGKILL);
+}
+
+int lk_new_session(void)
+{
+    return setsid() < 0 ? -errno : 0;
+}
+
+int lk_die_with_parent(pid_t parent)
+{
+#ifdef __linux__
+    if (prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0) != 0)
+        return -errno;
+    /* The parent may have died between fork() and here: then nothing will
+     * deliver the signal, and we must not run on. */
+    if (getppid() != parent)
+        return -ESRCH;
+    return 0;
+#else
+    (void) parent;
+    return -ENOSYS;
+#endif
 }
 
 int lk_userns_works(void)

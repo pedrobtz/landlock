@@ -27,13 +27,15 @@ Policies:
 installed packages and system libraries; reads and writes only the
 call's own temporary directory (the child's \code{TMPDIR}; see \code{\link[=fs]{fs()}}); may execute nothing; no TCP; signals and abstract
 sockets scoped to the sandbox; the \code{"dangerous"}, \code{"no_exec"} and
-\code{"no_net"} system calls denied; all capabilities dropped.
+\code{"no_net"} system calls denied, terminal-injection \code{ioctl}s refused; all
+capabilities dropped; no real-time scheduling (\code{rtprio = 0}).
 \item \code{"install"}: install a package from source. As \code{"numeric"}, plus
 executing the compiler toolchain (and the dynamic loader, which the
 kernel opens for execution too) and writing to \code{lib}; only the
 \code{"dangerous"} calls are denied.
 \item \code{"plumber"}: serve HTTP. As \code{"numeric"}, plus binding to \code{port}; the
-\code{"dangerous"} and \code{"no_exec"} calls are denied.
+\code{"dangerous"} and \code{"no_exec"} calls are denied, and sockets are limited
+to Unix, IPv4 and IPv6.
 }
 
 System call sets, character vectors for \code{\link[=syscalls]{syscalls()}} and
@@ -52,6 +54,10 @@ the later steps of \code{\link[=apply_policy]{apply_policy()}} use.
 \item \code{"no_exec"}: \code{execve} and \code{execveat} (\code{\link[=system]{system()}} stops working).
 \item \code{"no_net"}: socket creation and use. Also stops DNS, and is the only way
 to stop UDP without a network namespace.
+\item The groups \code{"dangerous"} is made of, for finer choices: \code{"debug"},
+\code{"mount"}, \code{"namespace"}, \code{"keyring"}, \code{"module"}, \code{"reboot"},
+\code{"swap"}, \code{"clock"}, \code{"privileged"}, \code{"memory"}, \code{"kernel"},
+\code{"session"}, \code{"sandbox"}.
 }
 
 Paths that do not exist on this system are left out of the policies.

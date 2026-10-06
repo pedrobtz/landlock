@@ -8,6 +8,9 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 
 static double now(void)
 {
@@ -192,6 +195,58 @@ LK_TEST(userns_probe)
     return LK_T_PASS;
 }
 
+LK_TEST(new_session_drops_terminal)
+{
+    int rc = lk_new_session();
+    CHECK(rc == 0, "setsid: %s", strerror(-rc));
+    CHECK(getsid(0) == getpid(), "not a session leader");
+    int fd = open("/dev/tty", O_RDWR);
+    CHECK(fd < 0, "still has a controlling terminal");
+    PASS();
+}
+
+LK_TEST(die_with_parent)
+{
+#ifdef __linux__
+    /* A middle process forks a grandchild that arms PDEATHSIG, then exits:
+     * the grandchild must die with it. */
+    int p[2];
+    CHECK(lk_pipe(p) == 0, "pipe");
+    pid_t mid = fork();
+    if (mid == 0) {
+        pid_t me = getpid();
+        pid_t g = fork();
+        if (g == 0) {
+            int rc = lk_die_with_parent(me);
+            char c = rc == 0 ? 'y' : 'n';
+            ssize_t w = write(p[1], &c, 1);
+            (void) w;
+            sleep(30);
+            _exit(0);
+        }
+        char c;
+        ssize_t r = read(p[0], &c, 1);  /* wait until armed */
+        (void) r;
+        ssize_t w = write(p[1], &g, sizeof g);  /* report the grandchild's pid */
+        (void) w;
+        _exit(0);
+    }
+    close(p[1]);
+    waitpid(mid, NULL, 0);
+    pid_t g = 0;
+    ssize_t r = read(p[0], &g, sizeof g);
+    close(p[0]);
+    CHECK(r == (ssize_t) sizeof g && g > 0, "no grandchild pid");
+    for (int i = 0; i < 100 && kill(g, 0) == 0; i++)
+        usleep(20000);
+    CHECK(kill(g, 0) != 0, "grandchild %d survived its parent", (int) g);
+    PASS();
+#else
+    CHECK(lk_die_with_parent(getppid()) == -ENOSYS, "off Linux");
+    PASS();
+#endif
+}
+
 LK_SUITE(suite_proc) = {
     { "small_payload", small_payload },
     { "one_mebibyte_no_deadlock", one_mebibyte_no_deadlock },
@@ -201,5 +256,7 @@ LK_SUITE(suite_proc) = {
     { "pipe_is_cloexec", pipe_is_cloexec },
     { "devnull_stdin", devnull_stdin },
     { "userns_probe", userns_probe },
+    { "new_session_drops_terminal", new_session_drops_terminal },
+    { "die_with_parent", die_with_parent },
     { NULL, NULL }
 };

@@ -17,7 +17,8 @@ eval_safe(
   rlimits = NULL,
   profile = NULL,
   device = pdf,
-  policy = NULL
+  policy = NULL,
+  grace = 0
 )
 
 eval_fork(
@@ -25,7 +26,8 @@ eval_fork(
   tmp = tempfile("fork"),
   std_out = stdout(),
   std_err = stderr(),
-  timeout = 0
+  timeout = 0,
+  grace = 0
 )
 }
 \arguments{
@@ -61,6 +63,9 @@ given, every file descriptor the child inherited, except its standard
 streams, is pointed at \verb{/dev/null} first, because Landlock does not
 revoke files that are already open. Connections and graphics devices
 inherited from the session are therefore unusable in the child.}
+
+\item{grace}{Seconds between \code{SIGTERM} and \code{SIGKILL} when the timeout
+passes; \code{0} (the default) kills at once.}
 }
 \value{
 The value of \code{expr}, visible or invisible as in the child. The
@@ -81,8 +86,11 @@ Both keep the arguments of the 'unix' package functions of the same name,
 in the same order; \code{policy} is added at the end.
 }
 \details{
-The child is killed when \code{timeout} seconds of wall-clock time pass, or
-when the session is interrupted. Errors in the child are raised again in
+The child is killed when \code{timeout} seconds of wall-clock time pass, when
+the session is interrupted, and when the session itself dies (so a killed
+R process leaves no sandboxed child running without its timeout). It
+runs in a session of its own, with no controlling terminal, so it cannot
+inject input into the user's terminal. Errors in the child are raised again in
 the session with their original class. Output the child writes is
 forwarded as it arrives.
 

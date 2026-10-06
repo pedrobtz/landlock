@@ -46,6 +46,7 @@ struct lk_landlock_net_port_attr {
 };
 
 #define LK_LANDLOCK_CREATE_RULESET_VERSION  (1U << 0)
+#define LK_LANDLOCK_CREATE_RULESET_ERRATA   (1U << 1)   /* Linux 6.15 */
 
 #define LK_LANDLOCK_RULE_PATH_BENEATH  1
 #define LK_LANDLOCK_RULE_NET_PORT      2

@@ -45,6 +45,8 @@
 #' @export
 seccomp_deny <- function(syscalls, action = c("errno", "kill", "log", "trap"), errno = "EPERM") {
   spec <- syscall_spec(syscalls, action, errno)
+  spec$block_tty <- FALSE
+  spec$lock_personality <- FALSE
   res <- install_filter(spec, strict = TRUE)
   invisible(res$tsync)
 }
@@ -66,6 +68,12 @@ syscall_table <- function() {
 
 sc_actions <- c(errno = 0L, kill = 1L, log = 2L, trap = 3L)
 
+sc_families <- c(unix = 0L, inet = 0L, inet6 = 0L, netlink = 0L, packet = 0L, vsock = 0L)
+
+# personality() values Docker's default profile allows: PER_LINUX,
+# PER_LINUX32, UNAME26, PER_LINUX32 | UNAME26, and the query 0xffffffff.
+sc_personalities <- c(0, 8, 0x20000, 0x20008, 0xffffffff)
+
 syscall_spec <- function(syscalls, action, errno) {
   if (!is.character(syscalls) || anyNA(syscalls))
     stop("system calls must be given as a character vector of names", call. = FALSE)
@@ -77,7 +85,7 @@ syscall_spec <- function(syscalls, action, errno) {
   errnum <- if (is.numeric(errno)) as.integer(errno) else .Call(C_errno_value, errno)
   if (length(errnum) != 1L || is.na(errnum) || errnum < 1L || errnum > 4095L)
     stop("errno must be a number between 1 and 4095 or one of EPERM, EACCES, ENOSYS, ",
-         "EINVAL, ENOTSUP, EAGAIN, ENOMEM, EIO", call. = FALSE)
+         "EINVAL, ENOTSUP, EAGAIN, ENOMEM, EIO, EFAULT, EAFNOSUPPORT", call. = FALSE)
   list(deny = unique(syscalls), action = action, errno = errnum,
        errno_name = if (is.character(errno)) errno else as.character(errnum))
 }
@@ -104,7 +112,48 @@ install_filter <- function(spec, strict) {
   # Denying unshare is meant to deny new namespaces; clone() can create them
   # too, so refuse clone() with any CLONE_NEW* flag as well.
   clone_ns <- "unshare" %in% spec$deny
-  rc <- .Call(C_sc_install, nrs, as.integer(actions), as.integer(errnos), clone_ns)
+  # Argument rules come first: a call they do not match falls through to
+  # the plain deny list.
+  args <- rep(-1L, length(nrs))
+  negates <- rep(0L, length(nrs))
+  vals <- vector("list", length(nrs))
+  extra <- character()
+  arg_rule <- function(name, arg, values, negate, errno_name) {
+    nr <- .Call(C_sc_lookup, name)
+    if (nr < 0L) return(FALSE)
+    nrs <<- c(nr, nrs)
+    actions <<- c(sc_actions[["errno"]], actions)
+    errnos <<- c(.Call(C_errno_value, errno_name), errnos)
+    args <<- c(arg, args)
+    negates <<- c(as.integer(negate), negates)
+    vals <<- c(list(as.double(values)), vals)
+    TRUE
+  }
+  if (isTRUE(spec$block_tty)) {
+    req <- .Call(C_tty_ioctls)
+    req <- req[!is.na(req)]
+    if (length(req) && arg_rule("ioctl", 1L, req, FALSE, "EPERM"))
+      extra <- c(extra, "terminal injection ioctls refused")
+  }
+  if (length(spec$socket_families)) {
+    fam <- vapply(spec$socket_families, function(f) .Call(C_af_value, f), integer(1))
+    if (arg_rule("socket", 0L, fam[!is.na(fam)], TRUE, "EAFNOSUPPORT"))
+      extra <- c(extra, paste("sockets limited to", paste(spec$socket_families, collapse = ", ")))
+    if (.Call(C_sc_lookup, "socketcall") >= 0L) {
+      nrs <- c(nrs, .Call(C_sc_lookup, "socketcall"))
+      actions <- c(actions, sc_actions[["errno"]])
+      errnos <- c(errnos, .Call(C_errno_value, "EPERM"))
+      args <- c(args, -1L)
+      negates <- c(negates, 0L)
+      vals <- c(vals, list(NULL))
+    }
+  }
+  if (isTRUE(spec$lock_personality) && !"personality" %in% spec$deny) {
+    if (arg_rule("personality", 0L, sc_personalities, TRUE, "EPERM"))
+      extra <- c(extra, "personality locked")
+  }
+  rc <- .Call(C_sc_install, nrs, as.integer(actions), as.integer(errnos), as.integer(args),
+              as.integer(negates), vals, clone_ns)
   if (rc[[1]] == -.Call(C_errno_value, "ENOTSUP")) {
     msg <- "seccomp filters are not supported on this architecture by this build"
     if (strict) stop(msg, call. = FALSE)
@@ -112,8 +161,10 @@ install_filter <- function(spec, strict) {
   }
   if (rc[[1]] != 0L)
     stop("installing the seccomp filter: ", .Call(C_strerror, rc[[1]]), call. = FALSE)
-  detail <- sprintf("deny %d call%s (%s%s)", sum(nrs >= 0L), if (sum(nrs >= 0L) == 1L) "" else "s",
+  plain <- sum(args < 0L)
+  detail <- sprintf("deny %d call%s (%s%s)", plain, if (plain == 1L) "" else "s",
                     spec$action, if (spec$action == "errno") paste0(" ", spec$errno_name) else "")
+  if (length(extra)) detail <- paste0(detail, "; ", paste(extra, collapse = "; "))
   if (length(absent))
     detail <- paste0(detail, "; not on this architecture: ", paste(absent, collapse = ", "))
   if (clone_ns) detail <- paste0(detail, "; clone() with namespace flags refused")

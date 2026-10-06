@@ -12,6 +12,8 @@ A list of class \code{lk_status} with elements:
 \item{os, kernel}{Operating system and kernel release.}
 \item{landlock_abi}{Landlock ABI version; 0 when Landlock is not
 available (older kernel, not built, or disabled at boot).}
+\item{landlock_errata}{Bitmask of Landlock fixes the kernel reports
+(Linux 6.15 and later), \code{NA} where the kernel cannot say.}
 \item{seccomp, seccomp_filters}{Seccomp mode of this process (0 none,
 1 strict, 2 filter) and the number of filters installed.}
 \item{no_new_privs}{Whether \code{no_new_privs} is already set.}
@@ -20,6 +22,10 @@ available (older kernel, not built, or disabled at boot).}
 \item{cgroup}{cgroup version, this process's cgroup and whether it is
 delegated (writable).}
 \item{apparmor}{Whether AppArmor is enabled and the current profile.}
+\item{tiocsti_legacy}{Whether the kernel still lets an unprivileged
+process push input into a terminal with \code{TIOCSTI}
+(\code{dev.tty.legacy_tiocsti}); \code{NA} where the setting does not exist.
+Confined children run without a controlling terminal either way.}
 }
 Values that do not apply on this system are \code{NA}.
 }
