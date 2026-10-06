@@ -13,7 +13,7 @@ preset(name, ...)
 first library path), \code{port} for \code{"plumber"} (default 8000).}
 }
 \value{
-A \code{\link[=policy]{policy()}}.
+A \code{\link[=policy]{policy()}}, or for a system call set a character vector.
 }
 \description{
 Policies for common cases, built for the running session when called
@@ -21,18 +21,38 @@ Policies for common cases, built for the running session when called
 add to it with the \code{\link[=policy]{policy()}} verbs.
 }
 \details{
+Policies:
 \itemize{
 \item \code{"numeric"}: evaluate R code that only computes. Reads R, the
 installed packages and system libraries; reads and writes only the
 session's temporary directory; may execute nothing; no TCP; signals and abstract
-sockets scoped to the sandbox.
+sockets scoped to the sandbox; the \code{"dangerous"}, \code{"no_exec"} and
+\code{"no_net"} system calls denied; all capabilities dropped.
 \item \code{"install"}: install a package from source. As \code{"numeric"}, plus
 executing the compiler toolchain (and the dynamic loader, which the
-kernel opens for execution too) and writing to \code{lib}.
-\item \code{"plumber"}: serve HTTP. As \code{"numeric"}, plus binding to \code{port}.
+kernel opens for execution too) and writing to \code{lib}; only the
+\code{"dangerous"} calls are denied.
+\item \code{"plumber"}: serve HTTP. As \code{"numeric"}, plus binding to \code{port}; the
+\code{"dangerous"} and \code{"no_exec"} calls are denied.
 }
 
-Paths that do not exist on this system are left out.
+System call sets, character vectors for \code{\link[=syscalls]{syscalls()}} and
+\code{\link[=seccomp_deny]{seccomp_deny()}}:
+\itemize{
+\item \code{"dangerous"}: calls a sandboxed R process has no use for and that
+widen the kernel's attack surface or escape a sandbox: \code{ptrace},
+\code{process_vm_readv}, mounting, namespaces, keyrings, \code{bpf},
+\code{perf_event_open}, \code{io_uring}, \code{userfaultfd}, kernel modules, \code{kexec},
+\code{reboot}, swap, clock setting, \code{open_by_handle_at}, NUMA policy calls,
+and \verb{landlock_*} and \code{seccomp} themselves (the sandbox is complete by
+the time the filter is installed). Never \code{set*id} or \code{capset}, which
+the later steps of \code{\link[=apply_policy]{apply_policy()}} use.
+\item \code{"no_exec"}: \code{execve} and \code{execveat} (\code{\link[=system]{system()}} stops working).
+\item \code{"no_net"}: socket creation and use. Also stops DNS, and is the only way
+to stop UDP without a network namespace.
+}
+
+Paths that do not exist on this system are left out of the policies.
 }
 \examples{
 preset("numeric")

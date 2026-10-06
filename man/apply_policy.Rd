@@ -27,8 +27,9 @@ requested layer and the columns \code{layer}, \code{status} (\code{"applied"} or
 \description{
 \code{apply_policy()} is the engine behind \code{\link[=eval_safe]{eval_safe()}}, \code{\link[=run]{run()}} and
 \code{\link[=confine]{confine()}}: it applies the layers of a \code{\link[=policy]{policy()}} to the calling process,
-in the order of design.md section 4 (AppArmor, Landlock, user and group
-ids, resource limits). It is irreversible; call it in a child process,
+in a fixed order: AppArmor, Landlock, the capability bounding set,
+seccomp, user and group ids, the remaining capability sets, resource
+limits. Each step needs what the later ones take away. It is irreversible; call it in a child process,
 or use \code{confine()}, which adds a check for threads.
 }
 \details{

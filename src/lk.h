@@ -56,6 +56,30 @@ int lk_ll_restrict(const struct lk_ll_policy *p, struct lk_ll_report *r);
 /* Filesystem rights the given ABI knows (the "handled" set); 0 for abi <= 0. */
 uint64_t lk_ll_handled_fs(int abi);
 
+/* ---- seccomp (sc.c) ---------------------------------------------------- */
+
+enum { LK_SC_ERRNO = 0, LK_SC_KILL_PROCESS = 1, LK_SC_LOG = 2, LK_SC_TRAP = 3 };
+
+size_t lk_sc_count(void);                       /* names in the table (all architectures) */
+const char *lk_sc_name_at(size_t i, int *nr);   /* *nr = -1: no such call on this arch */
+int lk_sc_lookup(const char *name);             /* nr, -ENOSYS absent on this arch, -ENOENT unknown */
+int lk_sc_status(void);                         /* 0 none, 1 strict, 2 filter */
+
+/* Install a filter returning `action` for each listed call (errnum for
+ * LK_SC_ERRNO) and allowing everything else; calls from another ABI are
+ * killed. Sets no_new_privs. *tsync = 1 when every thread got the filter.
+ * -ENOTSUP on an architecture without an AUDIT_ARCH entry; -ENOSYS off
+ * Linux. */
+int lk_sc_deny(const int *nrs, size_t n, int action, int errnum, int *tsync);
+
+/* ---- Capabilities and no_new_privs (caps.c) ---------------------------- */
+
+int lk_cap_last(void);                          /* /proc/sys/kernel/cap_last_cap, fallback 40 */
+int lk_caps_drop_bounding(const int *keep, size_t nkeep);  /* needs CAP_SETPCAP */
+int lk_caps_clear(const int *keep, size_t nkeep);          /* sets := sets & keep; ambient cleared */
+int lk_nnp_set(void);
+int lk_nnp_get(void);                           /* 0 or 1 */
+
 /* ---- Limits, ids, priority, chroot, AppArmor (lim.c) ------------------ */
 
 /* "as", "core", "cpu", "data", "fsize", "memlock", "nofile", "nproc",

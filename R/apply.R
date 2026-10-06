@@ -2,8 +2,9 @@
 #'
 #' `apply_policy()` is the engine behind [eval_safe()], [run()] and
 #' [confine()]: it applies the layers of a [policy()] to the calling process,
-#' in the order of design.md section 4 (AppArmor, Landlock, user and group
-#' ids, resource limits). It is irreversible; call it in a child process,
+#' in a fixed order: AppArmor, Landlock, the capability bounding set,
+#' seccomp, user and group ids, the remaining capability sets, resource
+#' limits. Each step needs what the later ones take away. It is irreversible; call it in a child process,
 #' or use `confine()`, which adds a check for threads.
 #'
 #' `confine()` applies a policy to the current R session. Landlock restricts
@@ -67,10 +68,42 @@ apply_policy <- function(p, strict = !isTRUE(p$best_effort)) {
           else sprintf("scopes need Landlock ABI 6; the kernel offers %d", used))
   }
 
-  # User and group ids (step 11)
+  # Capability bounding set (step 8): needs CAP_SETPCAP, so before the
+  # sets are cleared and before seccomp could deny prctl variants.
+  caps_nr <- NULL
+  caps_bounding <- FALSE
+  if (!is.null(p$caps)) {
+    if (is_linux()) {
+      caps_nr <- cap_numbers(p$caps$keep)
+      caps_bounding <- drop_bounding(caps_nr)
+    } else if (strict) {
+      stop("capabilities are only available on Linux", call. = FALSE)
+    }
+  }
+
+  # seccomp (step 10): last of the one-way filters, so it can deny what the
+  # earlier steps used (landlock_*, unshare, mount).
+  if (!is.null(p$syscalls)) {
+    res <- install_filter(p$syscalls, strict = strict)
+    add("seccomp", res$status, res$detail)
+  }
+
+  # User and group ids (step 11): after seccomp, whose presets never deny
+  # set*id; before the capability sets are cleared, which removes
+  # CAP_SETUID.
   if (!is.null(p$ids) && !(is.na(p$ids$uid) && is.na(p$ids$gid))) {
     .Call(C_setids, p$ids$uid, p$ids$gid)
     add("ids", "applied", sprintf("uid %s, gid %s", p$ids$uid, p$ids$gid))
+  }
+
+  # Capability sets and no_new_privs (step 12).
+  if (!is.null(p$caps)) {
+    if (!is.null(caps_nr)) {
+      clear_caps(caps_nr)
+      add("caps", "applied", caps_detail(p$caps$keep, caps_bounding))
+    } else {
+      add("caps", "skipped", "capabilities are only available on Linux")
+    }
   }
 
   # Resource limits (step 12): ceilings, never raised above the hard limit.

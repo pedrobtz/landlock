@@ -85,6 +85,119 @@ SEXP C_ll_restrict(SEXP paths, SEXP modes, SEXP bind, SEXP connect, SEXP flags)
     return out;
 }
 
+/* ---- seccomp ----------------------------------------------------------- */
+
+/* data.frame-ready list(name, nr) of the calls this architecture has. */
+SEXP C_sc_table(void)
+{
+    size_t n = lk_sc_count(), k = 0;
+    for (size_t i = 0; i < n; i++) {
+        int nr;
+        lk_sc_name_at(i, &nr);
+        if (nr >= 0)
+            k++;
+    }
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, (R_xlen_t) k));
+    SEXP nrs = PROTECT(Rf_allocVector(INTSXP, (R_xlen_t) k));
+    k = 0;
+    for (size_t i = 0; i < n; i++) {
+        int nr;
+        const char *name = lk_sc_name_at(i, &nr);
+        if (nr < 0)
+            continue;
+        SET_STRING_ELT(names, (R_xlen_t) k, Rf_mkChar(name));
+        INTEGER(nrs)[k++] = nr;
+    }
+    SEXP out = PROTECT(Rf_allocVector(VECSXP, 2));
+    SET_VECTOR_ELT(out, 0, names);
+    SET_VECTOR_ELT(out, 1, nrs);
+    UNPROTECT(3);
+    return out;
+}
+
+/* Per name: the number, -1 when this architecture lacks the call, -2 when
+ * the name is unknown. */
+SEXP C_sc_lookup(SEXP names)
+{
+    R_xlen_t n = XLENGTH(names);
+    SEXP out = PROTECT(Rf_allocVector(INTSXP, n));
+    for (R_xlen_t i = 0; i < n; i++) {
+        int r = lk_sc_lookup(CHAR(STRING_ELT(names, i)));
+        INTEGER(out)[i] = r >= 0 ? r : r == -ENOSYS ? -1 : -2;
+    }
+    UNPROTECT(1);
+    return out;
+}
+
+/* Returns c(rc, tsync): rc 0, or -errno for the R side to report. */
+SEXP C_sc_deny(SEXP nrs, SEXP action, SEXP errnum)
+{
+    int tsync = 0;
+    int rc = lk_sc_deny(INTEGER(nrs), (size_t) XLENGTH(nrs), Rf_asInteger(action),
+                        Rf_asInteger(errnum), &tsync);
+    SEXP out = Rf_allocVector(INTSXP, 2);
+    INTEGER(out)[0] = rc;
+    INTEGER(out)[1] = tsync;
+    return out;
+}
+
+SEXP C_sc_status(void)
+{
+    return Rf_ScalarInteger(lk_sc_status());
+}
+
+SEXP C_errno_value(SEXP name)
+{
+    static const struct { const char *name; int value; } tbl[] = {
+        { "EPERM", EPERM }, { "EACCES", EACCES }, { "ENOSYS", ENOSYS },
+        { "EINVAL", EINVAL }, { "ENOTSUP", ENOTSUP }, { "EOPNOTSUPP", EOPNOTSUPP },
+        { "EAGAIN", EAGAIN }, { "ENOMEM", ENOMEM }, { "EIO", EIO },
+    };
+    const char *s = CHAR(STRING_ELT(name, 0));
+    for (size_t i = 0; i < sizeof tbl / sizeof tbl[0]; i++)
+        if (strcmp(tbl[i].name, s) == 0)
+            return Rf_ScalarInteger(tbl[i].value);
+    return Rf_ScalarInteger(NA_INTEGER);
+}
+
+/* ---- capabilities and no_new_privs -------------------------------------- */
+
+SEXP C_cap_last(void)
+{
+    return Rf_ScalarInteger(lk_cap_last());
+}
+
+/* These return 0 or -errno; the R side decides between skip and error. */
+SEXP C_caps_drop_bounding(SEXP keep)
+{
+    return Rf_ScalarInteger(lk_caps_drop_bounding(INTEGER(keep), (size_t) XLENGTH(keep)));
+}
+
+SEXP C_caps_clear(SEXP keep)
+{
+    return Rf_ScalarInteger(lk_caps_clear(INTEGER(keep), (size_t) XLENGTH(keep)));
+}
+
+SEXP C_nnp_set(void)
+{
+    int rc = lk_nnp_set();
+    if (rc != 0)
+        fail("prctl(PR_SET_NO_NEW_PRIVS)", rc);
+    return Rf_ScalarLogical(TRUE);
+}
+
+SEXP C_nnp_get(void)
+{
+    int r = lk_nnp_get();
+    return Rf_ScalarLogical(r < 0 ? NA_LOGICAL : r);
+}
+
+SEXP C_strerror(SEXP err)
+{
+    int e = Rf_asInteger(err);
+    return Rf_mkString(strerror(e < 0 ? -e : e));
+}
+
 /* ---- rlimits ----------------------------------------------------------- */
 
 static double u64_to_real(uint64_t v)
