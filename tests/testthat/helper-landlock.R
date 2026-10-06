@@ -32,3 +32,10 @@ landlock_only <- function() {
   p$caps <- NULL
   p
 }
+
+# A readable file the tests own (R.home()/COPYING is absent on Alpine).
+scratch_file <- function() {
+  f <- tempfile("lk-file-")
+  writeLines("landlock test file", f)
+  f
+}

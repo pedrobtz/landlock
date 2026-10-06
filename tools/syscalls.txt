@@ -255,3 +255,4 @@ rt_sigprocmask
 rt_sigreturn
 sigaltstack
 sched_yield
+socketcall

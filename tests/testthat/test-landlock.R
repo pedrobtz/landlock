@@ -14,8 +14,9 @@ test_that("the numeric preset lets R compute", {
 
 test_that("writes are confined to the allowed hierarchy", {
   skip_without_landlock()
+  # the call's own scratch directory (TMPDIR) is writable; tempdir() is not
   expect_identical(eval_safe({
-    f <- tempfile()
+    f <- file.path(Sys.getenv("TMPDIR"), "x")
     writeLines("x", f)
     readLines(f)
   }, policy = preset("numeric")), "x")
@@ -45,7 +46,7 @@ test_that("run() works when execution is allowed", {
   p <- fs(landlock_only(), exec = dirs[file.exists(dirs)])
   f <- tempfile()
   writeLines("inside", f)
-  expect_identical(rawToChar(run("cat", f, policy = p)$stdout), "inside\n")
+  expect_identical(rawToChar(run("cat", f, policy = fs(p, read = f))$stdout), "inside\n")
   r <- run("cat", "/etc/passwd", policy = p)
   expect_false(r$status == 0L)
   expect_match(rawToChar(r$stderr), "Permission denied")
@@ -56,7 +57,7 @@ test_that("inherited descriptors are closed under a policy", {
   fd <- .Call(C_test_open_fd, "/etc/passwd")
   on.exit(.Call(C_test_close_fd, fd))
   expect_gt(eval_fork(.Call(C_test_read_fd, fd)), 0L)
-  expect_lt(eval_safe(.Call(C_test_read_fd, fd), policy = preset("numeric")), 0L)
+  expect_identical(eval_safe(.Call(C_test_read_fd, fd), policy = preset("numeric")), 0L)  # /dev/null
 })
 
 test_that("TCP bind and connect follow the allow-lists", {

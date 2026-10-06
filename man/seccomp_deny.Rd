@@ -42,6 +42,11 @@ calls on a 64-bit kernel) are always refused. Linux only.
 The filter goes to every thread of the process when the kernel can do
 that (seccomp's TSYNC flag), otherwise only to the calling thread.
 
+Two calls get special treatment. \code{clone3} always fails with \code{ENOSYS}, so
+the C library falls back to \code{clone()}, whose flags a filter can inspect.
+Denying \code{unshare} also refuses \code{clone()} with any namespace flag, which
+would otherwise create the same namespaces.
+
 Actions: \code{"errno"} makes the call fail with \code{errno} (default \code{EPERM}),
 \code{"kill"} kills the process with \code{SIGSYS}, \code{"log"} allows the call but
 logs it to the kernel audit log, \code{"trap"} sends \code{SIGSYS} to the thread.

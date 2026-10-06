@@ -30,11 +30,26 @@ struct lk_sock_fprog {    /* struct sock_fprog */
 #define LK_BPF_ABS  0x20
 #define LK_BPF_JEQ  0x10
 #define LK_BPF_JGE  0x30
+#define LK_BPF_JSET 0x40
 #define LK_BPF_K    0x00
 
 /* struct seccomp_data: int nr; __u32 arch; __u64 instruction_pointer; __u64 args[6]; */
 #define LK_SECCOMP_DATA_NR    0
 #define LK_SECCOMP_DATA_ARCH  4
+#define LK_SECCOMP_DATA_ARGS  16
+
+/* clone()'s flags argument: args[1] on s390x, args[0] elsewhere; the low 32
+ * bits hold every CLONE_NEW* flag and sit at +4 on big-endian. */
+#if defined(__s390x__)
+#define LK_CLONE_FLAGS_OFF (LK_SECCOMP_DATA_ARGS + 8 + 4)
+#elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#define LK_CLONE_FLAGS_OFF (LK_SECCOMP_DATA_ARGS + 4)
+#else
+#define LK_CLONE_FLAGS_OFF LK_SECCOMP_DATA_ARGS
+#endif
+
+/* CLONE_NEWTIME | NEWNS | NEWCGROUP | NEWUTS | NEWIPC | NEWUSER | NEWPID | NEWNET */
+#define LK_CLONE_NEW_MASK 0x7E020080U
 
 #define LK_SECCOMP_SET_MODE_FILTER   1
 #define LK_SECCOMP_MODE_FILTER       2

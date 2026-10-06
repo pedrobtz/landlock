@@ -117,34 +117,35 @@ LK_TEST(timeout_kill)
     PASS();
 }
 
-LK_TEST(close_from_keeps_listed)
+LK_TEST(hygiene_replaces_with_devnull)
 {
-    int fds[6];
-    for (int i = 0; i < 6; i++) {
-        fds[i] = open("/dev/null", O_RDONLY);
+    char path[256];
+    snprintf(path, sizeof path, "%s/secret", lk_t_tmpdir());
+    int w = open(path, O_CREAT | O_WRONLY, 0600);
+    CHECK(w >= 0 && write(w, "secret", 6) == 6, "setup");
+    close(w);
+    int fds[4];
+    for (int i = 0; i < 4; i++) {
+        fds[i] = open(path, O_RDONLY);
         CHECK(fds[i] >= 0, "open");
     }
-    int keep[] = { fds[2], fds[4] };
-    int rc = lk_close_from(3, keep, 2);
-    CHECK(rc == 0, "close_from: %s", strerror(-rc));
-    for (int i = 0; i < 6; i++) {
-        int open_now = fcntl(fds[i], F_GETFD) != -1;
-        int kept = i == 2 || i == 4;
-        CHECK(open_now == kept, "fd %d: open=%d kept=%d", fds[i], open_now, kept);
+    int keep[] = { fds[1] };
+    int rc = lk_fd_hygiene(3, keep, 1);
+    CHECK(rc == 0, "hygiene: %s", strerror(-rc));
+    for (int i = 0; i < 4; i++) {
+        char buf[8];
+        ssize_t n = read(fds[i], buf, sizeof buf);
+        if (i == 1) {
+            CHECK(n == 6, "kept fd lost its file (read %zd)", n);
+        } else {
+            CHECK(n == 0, "fd %d still reads the file (read %zd)", fds[i], n);
+            CHECK(fcntl(fds[i], F_GETFD) & FD_CLOEXEC, "fd %d not close-on-exec", fds[i]);
+        }
     }
-    CHECK(fcntl(0, F_GETFD) != -1 || errno != EBADF, "fd 0 closed");
-    PASS();
-}
-
-LK_TEST(close_from_lowfd_kept)
-{
-    int a = open("/dev/null", O_RDONLY);
-    int b = open("/dev/null", O_RDONLY);
-    CHECK(a >= 0 && b > a, "open");
-    int keep[] = { a };
-    CHECK(lk_close_from(a, keep, 1) == 0, "close_from");
-    CHECK(fcntl(a, F_GETFD) != -1, "kept lowfd closed");
-    CHECK(fcntl(b, F_GETFD) == -1 && errno == EBADF, "fd above kept one left open");
+    /* the numbers stay taken: a new open gets a fresh one */
+    int fresh = open("/dev/null", O_RDONLY);
+    for (int i = 0; i < 4; i++)
+        CHECK(fresh != fds[i], "number %d was reused", fresh);
     PASS();
 }
 
@@ -177,8 +178,7 @@ LK_SUITE(suite_proc) = {
     { "small_payload", small_payload },
     { "one_mebibyte_no_deadlock", one_mebibyte_no_deadlock },
     { "timeout_kill", timeout_kill },
-    { "close_from_keeps_listed", close_from_keeps_listed },
-    { "close_from_lowfd_kept", close_from_lowfd_kept },
+    { "hygiene_replaces_with_devnull", hygiene_replaces_with_devnull },
     { "pipe_is_cloexec", pipe_is_cloexec },
     { "devnull_stdin", devnull_stdin },
     { "userns_probe", userns_probe },

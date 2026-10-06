@@ -77,7 +77,7 @@ test_that("confine() and apply_policy() work in a child", {
 })
 
 test_that("inherited descriptors stay open without a policy", {
-  fd <- .Call(C_test_open_fd, file.path(R.home(), "COPYING"))
+  fd <- .Call(C_test_open_fd, scratch_file())
   on.exit(.Call(C_test_close_fd, fd))
   expect_gt(eval_fork(.Call(C_test_read_fd, fd)), 0L)
 })

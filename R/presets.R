@@ -8,7 +8,7 @@
 #'
 #' * `"numeric"`: evaluate R code that only computes. Reads R, the
 #'   installed packages and system libraries; reads and writes only the
-#'   session's temporary directory; may execute nothing; no TCP; signals and abstract
+#'   call's own temporary directory (the child's `TMPDIR`; see [fs()]); may execute nothing; no TCP; signals and abstract
 #'   sockets scoped to the sandbox; the `"dangerous"`, `"no_exec"` and
 #'   `"no_net"` system calls denied; all capabilities dropped.
 #' * `"install"`: install a package from source. As `"numeric"`, plus
@@ -26,7 +26,9 @@
 #'   `process_vm_readv`, mounting, namespaces, keyrings, `bpf`,
 #'   `perf_event_open`, `io_uring`, `userfaultfd`, kernel modules, `kexec`,
 #'   `reboot`, swap, clock setting, `open_by_handle_at`, NUMA policy calls,
-#'   and `landlock_*` and `seccomp` themselves (the sandbox is complete by
+#'   `pidfd_getfd`, leaving the process group (`setsid`, `setpgid`, so that
+#'   nothing outlives the call), `clone3` (see [seccomp_deny()]), and
+#'   `landlock_*` and `seccomp` themselves (the sandbox is complete by
 #'   the time the filter is installed). Never `set*id` or `capset`, which
 #'   the later steps of [apply_policy()] use.
 #' * `"no_exec"`: `execve` and `execveat` ([system()] stops working).
@@ -76,18 +78,20 @@ sc_dangerous <- c(
   "mbind", "set_mempolicy", "migrate_pages", "move_pages",
   "settimeofday", "clock_settime", "adjtimex", "clock_adjtime",
   "sethostname", "setdomainname", "personality", "ioperm", "iopl", "lookup_dcookie",
+  "clone3", "pidfd_getfd", "setsid", "setpgid",
   "landlock_create_ruleset", "landlock_add_rule", "landlock_restrict_self", "seccomp"
 )
 
 sc_no_exec <- c("execve", "execveat")
 
-sc_no_net <- c("socket", "socketpair", "connect", "bind", "listen", "accept", "accept4",
-               "sendto", "recvfrom", "sendmsg", "recvmsg", "sendmmsg", "recvmmsg")
+sc_no_net <- c("socket", "socketcall", "socketpair", "connect", "bind", "listen", "accept",
+               "accept4", "sendto", "recvfrom", "sendmsg", "recvmsg", "sendmmsg", "recvmmsg")
 
 landlock_base <- function() {
-  # rw, not write: a scratch directory is useless if what was written there
-  # cannot be read back (write does not imply read).
-  p <- fs(policy(), read = r_read_paths(), rw = existing(c(tempdir(), "/dev/null")))
+  # The call's own scratch directory, read and write; never the session's
+  # tempdir(), which the session may later trust (cached shared libraries,
+  # knitr caches, .rds files).
+  p <- fs(policy(), read = r_read_paths(), rw = existing("/dev/null"), tmp = TRUE)
   scope(net(p))
 }
 

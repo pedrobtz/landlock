@@ -32,11 +32,14 @@
 #' front-ends such as RStudio.
 #'
 #' @param expr Expression to evaluate.
-#' @param tmp Temporary directory for the child; becomes its `TMPDIR`.
+#' @param tmp Temporary directory for the child; becomes its `TMPDIR`. When
+#'   left at its default it is created for the call and removed afterwards.
 #' @param std_out,std_err Where the child's output goes; see *Output streams*.
 #' @param timeout Wall-clock limit in seconds; `0` for none.
 #' @param priority Scheduling priority of the child; see [setpriority()].
 #' @param uid,gid User and group to switch to (root only), as ids or names.
+#'   A `uid` without a `gid` takes the user's primary group, and the
+#'   supplementary groups are replaced, so no group of the caller remains.
 #'   After the switch the child can only read what that user can read,
 #'   including the R libraries it lazy-loads code from: landlock's own
 #'   functions are loaded beforehand, but functions of other packages used for
@@ -47,11 +50,18 @@
 #' @param profile AppArmor profile for the child.
 #' @param device Graphics device to use in the child.
 #' @param policy A [policy()] applied in the child before `expr` runs. When
-#'   given, the child also closes every file descriptor it inherited except
-#'   its standard streams, because Landlock does not revoke files that are
-#'   already open.
+#'   given, every file descriptor the child inherited, except its standard
+#'   streams, is pointed at `/dev/null` first, because Landlock does not
+#'   revoke files that are already open. Connections and graphics devices
+#'   inherited from the session are therefore unusable in the child.
 #' @return The value of `expr`, visible or invisible as in the child. The
 #'   report of the applied policy is available as [last_report()].
+#'
+#'   Under a `policy`, treat the value as data from an untrusted process. The
+#'   package itself never evaluates what the child sends, but the value can
+#'   contain closures, or environments whose active bindings run code when
+#'   read. Return plain data (vectors, lists, data frames) from confined
+#'   code, and be careful with anything else.
 #' @export
 #' @examples
 #' eval_safe(rnorm(5))
@@ -81,7 +91,8 @@ eval_safe <- function(expr, tmp = tempfile("fork"), std_out = stdout(), std_err 
     }, finally = graphics.off())
   }
   out <- fork_call(child, tmp = tmp, timeout = timeout, std_out = std_out, std_err = std_err,
-                   close_fds = !is.null(p))
+                   close_fds = !is.null(p), remove_tmp = missing(tmp),
+                   untrusted = !is.null(p))
   if (!is.null(out$report)) .state$last_report <- out$report
   if (!isTRUE(out$ok)) base::stop(out$error)
   if (isTRUE(out$visible)) out$value else invisible(out$value)
@@ -99,7 +110,7 @@ eval_fork <- function(expr, tmp = tempfile("fork"), std_out = stdout(), std_err 
     serialize(res, NULL)
   }
   out <- fork_call(child, tmp = tmp, timeout = timeout, std_out = std_out, std_err = std_err,
-                   close_fds = FALSE)
+                   close_fds = FALSE, remove_tmp = missing(tmp))
   if (!isTRUE(out$ok)) base::stop(out$error)
   out$value
 }
@@ -153,9 +164,10 @@ run <- function(cmd, args = character(), policy = NULL, timeout = 0, std_out = T
     }, error = function(e) e)
     serialize(list(ok = FALSE, error = res), NULL)
   }
-  res <- fork_call(child, tmp = NULL, timeout = timeout,
+  res <- fork_call(child, tmp = tempfile("run"), timeout = timeout,
                    std_out = sink_for(std_out, "out"), std_err = sink_for(std_err, "err"),
-                   close_fds = TRUE, capture_r_output = FALSE, mode = "run")
+                   close_fds = TRUE, capture_r_output = FALSE, mode = "run",
+                   remove_tmp = TRUE, untrusted = TRUE)
   joined <- function(which) if (is.null(captured[[which]])) NULL else do.call(c, c(list(raw()), captured[[which]]))
   list(status = res$exit_code, signal = res$signal, stdout = joined("out"), stderr = joined("err"))
 }
@@ -175,7 +187,7 @@ merge_unix_args <- function(policy, rlimits, uid, gid, profile) {
     p$limits <- old
   }
   if (length(uid) || length(gid))
-    p$ids <- list(uid = resolve_id(uid, "user"), gid = resolve_id(gid, "group"))
+    p$ids <- resolve_ids(uid, gid)
   if (length(profile)) {
     stopifnot(is.character(profile), length(profile) == 1L)
     p$apparmor <- profile
@@ -200,7 +212,9 @@ output_callback <- function(x, default) {
     }
     fun <- if (identical(summary(con)$text, "text")) {
       function(chunk) {
-        cat(rawToChar(chunk), file = con)
+        # A text connection cannot take NUL bytes; drop them rather than
+        # fail (and kill the child) on binary output.
+        cat(rawToChar(chunk[chunk != as.raw(0)]), file = con)
         flush(con)
       }
     } else {
@@ -222,7 +236,8 @@ output_callback <- function(x, default) {
 # Fork, run child() there, collect. Returns the child's unserialized
 # result (eval mode) or the process outcome (run mode).
 fork_call <- function(child, tmp, timeout, std_out, std_err, close_fds,
-                      capture_r_output = TRUE, mode = c("eval", "run")) {
+                      capture_r_output = TRUE, mode = c("eval", "run"),
+                      remove_tmp = FALSE, untrusted = FALSE) {
   mode <- match.arg(mode)
   out <- output_callback(std_out, stdout())
   err <- output_callback(std_err, stderr())
@@ -237,28 +252,41 @@ fork_call <- function(child, tmp, timeout, std_out, std_err, close_fds,
     timeout <- 0
   }
   if (!is.null(tmp)) {
-    if (!dir.exists(tmp)) dir.create(tmp, recursive = TRUE)
+    created <- !dir.exists(tmp)
+    if (created) dir.create(tmp, recursive = TRUE, mode = "0700")
     tmp <- normalizePath(tmp)
+    if (remove_tmp && created) on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
   }
   load_namespace()
+  max_result <- getOption("landlock.max_result", 2^31)
+  if (!is.numeric(max_result) || length(max_result) != 1L || is.na(max_result) || max_result <= 0)
+    stop("option landlock.max_result must be a positive number of bytes", call. = FALSE)
   wrapped <- function() {
     child_prepare(tmp, capture_r_output)
     on.exit(child_flush())
     child()
   }
-  res <- .Call(C_fork_eval, wrapped, timeout, out$fun, err$fun, isTRUE(close_fds))
+  res <- .Call(C_fork_eval, wrapped, timeout, out$fun, err$fun, isTRUE(close_fds),
+               as.double(max_result))
+  if (isTRUE(res$oversize))
+    stop(sprintf("the child's result is larger than %s bytes (options(landlock.max_result))",
+                 format(max_result, scientific = FALSE)), call. = FALSE)
   frames <- parse_frames(res$buffer)
   types <- vapply(frames, `[[`, character(1), "type")
   if (isTRUE(res$timed_out))
     stop(sprintf("timeout reached (%s sec)", format(timeout)), call. = FALSE)
+  if ("F" %in% types)
+    stop("child process setup failed: ", rawToChar(frames[[which(types == "F")[1]]]$body),
+         call. = FALSE)
+  first <- function(type) frames[[which(types == type)[1]]]$body
 
   if (mode == "run") {
     if ("R" %in% types) {
-      report <- unserialize(frames[[which(types == "R")[1]]]$body)
+      report <- read_report(unserialize(first("R")))
       if (!is.null(report)) .state$last_report <- report
     }
     if ("P" %in% types) {
-      outcome <- unserialize(frames[[which(types == "P")[1]]]$body)
+      outcome <- read_outcome(unserialize(first("P")), untrusted = TRUE)
       base::stop(outcome$error)
     }
     if (!"X" %in% types) stop(child_died_message(res), call. = FALSE)
@@ -266,23 +294,75 @@ fork_call <- function(child, tmp, timeout, std_out, std_err, close_fds,
   }
 
   if (!"P" %in% types) stop(child_died_message(res), call. = FALSE)
-  unserialize(frames[[which(types == "P")[1]]]$body)
+  read_outcome(unserialize(first("P")), untrusted = untrusted)
+}
+
+# Under a policy the child runs code that is not trusted, and once confined
+# it can write anything to the result pipe, including a frame of its own
+# making. So the session never evaluates what it receives: the outcome must
+# be a plain list, its fields are read with .subset2() (an environment with
+# an active binding would run code on `$`), and the report and the error
+# are rebuilt from plain values. The returned value itself is the caller's
+# data and is documented as untrusted.
+read_outcome <- function(x, untrusted) {
+  if (!untrusted) return(x)
+  malformed <- function() stop("the child process returned a malformed result", call. = FALSE)
+  if (typeof(x) != "list" || is.object(x)) malformed()
+  ok <- .subset2(x, "ok")
+  if (typeof(ok) != "logical" || length(ok) != 1L || is.na(ok)) malformed()
+  if (ok) {
+    vis <- .subset2(x, "visible")
+    return(list(ok = TRUE, value = .subset2(x, "value"),
+                visible = !identical(typeof(vis), "logical") || !identical(vis, FALSE),
+                report = read_report(.subset2(x, "report"))))
+  }
+  list(ok = FALSE, error = read_condition(.subset2(x, "error")), report = NULL)
+}
+
+read_condition <- function(e) {
+  plain_chr <- function(v) typeof(v) == "character" && !is.object(v)
+  if (typeof(e) != "list") return(simpleError("the child process failed with an unreadable error"))
+  msg <- .subset2(e, "message")
+  msg <- if (plain_chr(msg) && length(msg) >= 1L) msg[[1]] else "error in the child process"
+  call <- .subset2(e, "call")
+  if (!is.null(call) && typeof(call) != "language") call <- NULL
+  cls <- attr(e, "class", exact = TRUE)
+  cls <- if (plain_chr(cls)) unique(c(setdiff(cls, c("error", "condition")), "error", "condition"))
+         else c("simpleError", "error", "condition")
+  structure(class = cls, list(message = msg, call = call))
+}
+
+read_report <- function(r) {
+  if (is.null(r)) return(NULL)
+  col <- function(name) {
+    v <- if (typeof(r) == "list") .subset2(r, name) else NULL
+    if (typeof(v) == "character" && !is.object(v)) v else NULL
+  }
+  layer <- col("layer"); status <- col("status"); detail <- col("detail")
+  n <- length(layer)
+  if (is.null(layer) || length(status) != n || length(detail) != n) return(NULL)
+  abi <- attr(r, "landlock_abi", exact = TRUE)
+  abi <- if (typeof(abi) == "integer" && length(abi) == 1L) abi else NA_integer_
+  structure(data.frame(layer = layer, status = status, detail = detail, stringsAsFactors = FALSE),
+            landlock_abi = abi, class = c("lk_report", "data.frame"))
 }
 
 # Result-pipe frames: type byte, 8-byte native double length, bytes. A
 # truncated frame (the child died while writing) is dropped.
 parse_frames <- function(buf) {
+  # Indices are doubles: results may exceed 2^31 bytes.
   frames <- list()
-  n <- length(buf)
-  i <- 1L
-  while (i + 8L <= n) {
+  n <- as.double(length(buf))
+  i <- 1
+  while (i + 8 <= n) {
     type <- rawToChar(buf[i])
-    len <- readBin(buf[(i + 1L):(i + 8L)], "double", size = 8L)
-    end <- i + 8L + len
-    if (!is.finite(len) || len < 0 || end > n) break
-    body <- if (len > 0) buf[(i + 9L):end] else raw()
+    len <- readBin(buf[(i + 1):(i + 8)], "double", size = 8L)
+    if (!is.finite(len) || len < 0 || len != round(len)) break
+    end <- i + 8 + len
+    if (end > n) break
+    body <- if (len > 0) buf[(i + 9):end] else raw()
     frames[[length(frames) + 1L]] <- list(type = type, body = body)
-    i <- as.integer(end + 1)
+    i <- end + 1
   }
   frames
 }
@@ -331,6 +411,7 @@ child_prepare <- function(tmp, capture_r_output) {
   guard <- new.env(parent = emptyenv())
   reg.finalizer(guard, function(e) .Call(C_child_abort), onexit = TRUE)
   .state$guards <- c(.state$guards, guard)
+  .state$child_tmp <- tmp
   if (!is.null(tmp)) Sys.setenv(TMPDIR = tmp, TMP = tmp, TEMP = tmp)
   .state$sinks <- NULL
   # Route R-level output (cat, print, message, Rprintf) to the pipes on

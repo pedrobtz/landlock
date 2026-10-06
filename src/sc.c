@@ -61,26 +61,34 @@ static struct lk_sock_filter jump(uint16_t code, uint32_t k, uint8_t jt, uint8_t
     struct lk_sock_filter f = { code, jt, jf, k };
     return f;
 }
+
+static int rule_ret(const struct lk_sc_rule *r, uint32_t *ret)
+{
+    switch (r->action) {
+    case LK_SC_ERRNO:        *ret = LK_SECCOMP_RET_ERRNO | ((uint32_t) r->errnum & LK_SECCOMP_RET_DATA); return 0;
+    case LK_SC_KILL_PROCESS: *ret = LK_SECCOMP_RET_KILL_PROCESS; return 0;
+    case LK_SC_LOG:          *ret = LK_SECCOMP_RET_LOG; return 0;
+    case LK_SC_TRAP:         *ret = LK_SECCOMP_RET_TRAP; return 0;
+    }
+    return -EINVAL;
+}
 #endif
 
-int lk_sc_deny(const int *nrs, size_t n, int action, int errnum, int *tsync)
+int lk_sc_install(const struct lk_sc_rule *rules, size_t n, int deny_clone_ns, int *tsync)
 {
     *tsync = 0;
 #ifndef LK_AUDIT_ARCH
-    (void) nrs; (void) n; (void) action; (void) errnum;
+    (void) rules; (void) n; (void) deny_clone_ns;
     return -ENOTSUP;
 #else
-    uint32_t ret;
-    switch (action) {
-    case LK_SC_ERRNO:        ret = LK_SECCOMP_RET_ERRNO | ((uint32_t) errnum & LK_SECCOMP_RET_DATA); break;
-    case LK_SC_KILL_PROCESS: ret = LK_SECCOMP_RET_KILL_PROCESS; break;
-    case LK_SC_LOG:          ret = LK_SECCOMP_RET_LOG; break;
-    case LK_SC_TRAP:         ret = LK_SECCOMP_RET_TRAP; break;
-    default: return -EINVAL;
-    }
-    size_t max = 6 + 2 * n + 1;
+    size_t max = 6 + 5 + 2 * n + 1;
     if (max > 4096)
         return -E2BIG;
+    for (size_t i = 0; i < n; i++) {
+        uint32_t ret;
+        if (rule_ret(&rules[i], &ret) != 0)
+            return -EINVAL;
+    }
     struct lk_sock_filter *f = malloc(max * sizeof *f);
     if (!f)
         return -ENOMEM;
@@ -96,8 +104,22 @@ int lk_sc_deny(const int *nrs, size_t n, int action, int errnum, int *tsync)
     f[k++] = jump(LK_BPF_JMP | LK_BPF_JGE | LK_BPF_K, LK_X32_SYSCALL_BIT, 0, 1);
     f[k++] = stmt(LK_BPF_RET | LK_BPF_K, LK_SECCOMP_RET_KILL_PROCESS);
 #endif
+#ifdef SYS_clone
+    if (deny_clone_ns) {
+        /* clone() creating a namespace: the door unshare() would open. */
+        f[k++] = jump(LK_BPF_JMP | LK_BPF_JEQ | LK_BPF_K, (uint32_t) SYS_clone, 0, 3);
+        f[k++] = stmt(LK_BPF_LD | LK_BPF_W | LK_BPF_ABS, LK_CLONE_FLAGS_OFF);
+        f[k++] = jump(LK_BPF_JMP | LK_BPF_JSET | LK_BPF_K, LK_CLONE_NEW_MASK, 0, 1);
+        f[k++] = stmt(LK_BPF_RET | LK_BPF_K, LK_SECCOMP_RET_ERRNO | EPERM);
+        f[k++] = stmt(LK_BPF_LD | LK_BPF_W | LK_BPF_ABS, LK_SECCOMP_DATA_NR);
+    }
+#else
+    (void) deny_clone_ns;
+#endif
     for (size_t i = 0; i < n; i++) {
-        f[k++] = jump(LK_BPF_JMP | LK_BPF_JEQ | LK_BPF_K, (uint32_t) nrs[i], 0, 1);
+        uint32_t ret;
+        rule_ret(&rules[i], &ret);
+        f[k++] = jump(LK_BPF_JMP | LK_BPF_JEQ | LK_BPF_K, (uint32_t) rules[i].nr, 0, 1);
         f[k++] = stmt(LK_BPF_RET | LK_BPF_K, ret);
     }
     f[k++] = stmt(LK_BPF_RET | LK_BPF_K, LK_SECCOMP_RET_ALLOW);
@@ -142,11 +164,33 @@ out:
 #endif
 }
 
+int lk_sc_deny(const int *nrs, size_t n, int action, int errnum, int *tsync)
+{
+    struct lk_sc_rule *rules = malloc((n ? n : 1) * sizeof *rules);
+    if (!rules)
+        return -ENOMEM;
+    for (size_t i = 0; i < n; i++) {
+        rules[i].nr = nrs[i];
+        rules[i].action = action;
+        rules[i].errnum = errnum;
+    }
+    int rc = lk_sc_install(rules, n, 0, tsync);
+    free(rules);
+    return rc;
+}
+
 #else /* not Linux */
 
 int lk_sc_status(void)
 {
     return 0;
+}
+
+int lk_sc_install(const struct lk_sc_rule *rules, size_t n, int deny_clone_ns, int *tsync)
+{
+    (void) rules; (void) n; (void) deny_clone_ns;
+    *tsync = 0;
+    return -ENOSYS;
 }
 
 int lk_sc_deny(const int *nrs, size_t n, int action, int errnum, int *tsync)

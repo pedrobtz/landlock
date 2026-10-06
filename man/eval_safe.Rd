@@ -31,7 +31,8 @@ eval_fork(
 \arguments{
 \item{expr}{Expression to evaluate.}
 
-\item{tmp}{Temporary directory for the child; becomes its \code{TMPDIR}.}
+\item{tmp}{Temporary directory for the child; becomes its \code{TMPDIR}. When
+left at its default it is created for the call and removed afterwards.}
 
 \item{std_out, std_err}{Where the child's output goes; see \emph{Output streams}.}
 
@@ -40,6 +41,8 @@ eval_fork(
 \item{priority}{Scheduling priority of the child; see \code{\link[=setpriority]{setpriority()}}.}
 
 \item{uid, gid}{User and group to switch to (root only), as ids or names.
+A \code{uid} without a \code{gid} takes the user's primary group, and the
+supplementary groups are replaced, so no group of the caller remains.
 After the switch the child can only read what that user can read,
 including the R libraries it lazy-loads code from: landlock's own
 functions are loaded beforehand, but functions of other packages used for
@@ -54,13 +57,20 @@ limit; zero and \code{NA} are ignored.}
 \item{device}{Graphics device to use in the child.}
 
 \item{policy}{A \code{\link[=policy]{policy()}} applied in the child before \code{expr} runs. When
-given, the child also closes every file descriptor it inherited except
-its standard streams, because Landlock does not revoke files that are
-already open.}
+given, every file descriptor the child inherited, except its standard
+streams, is pointed at \verb{/dev/null} first, because Landlock does not
+revoke files that are already open. Connections and graphics devices
+inherited from the session are therefore unusable in the child.}
 }
 \value{
 The value of \code{expr}, visible or invisible as in the child. The
 report of the applied policy is available as \code{\link[=last_report]{last_report()}}.
+
+Under a \code{policy}, treat the value as data from an untrusted process. The
+package itself never evaluates what the child sends, but the value can
+contain closures, or environments whose active bindings run code when
+read. Return plain data (vectors, lists, data frames) from confined
+code, and be careful with anything else.
 }
 \description{
 \code{eval_fork()} evaluates an expression in a temporary fork of the R session
