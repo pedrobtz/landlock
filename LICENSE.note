@@ -1,0 +1,4 @@
+The Linux user-space API constants in src/compat/ are used under
+GPL-2.0 WITH Linux-syscall-note. Tests in tests/testthat/test-unix-*.R are
+adapted from the 'unix' package, MIT, Copyright (c) 2017 Jeroen Ooms.
+Full text and attribution: inst/COPYRIGHTS.

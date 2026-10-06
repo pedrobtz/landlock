@@ -1,14 +1,29 @@
 Package: landlock
-Title: What the Package Does (One Line, Title Case)
+Title: Process Confinement with 'Landlock', 'seccomp' and Capabilities
 Version: 0.0.0.9000
-Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
+Authors@R: c(
+    person("Pedro", "Z", , "pedrobtz@gmail.com", role = c("aut", "cre")),
+    person("Jeroen", "Ooms", role = "cph",
+           comment = "Author of the 'unix' package test suite ported in tests/testthat")
+  )
+Description: Evaluate R expressions or run programs in a kernel-enforced
+    sandbox. Builds on 'Landlock' <https://landlock.io/> (filesystem and TCP
+    rules), 'seccomp-bpf' (system call filters), capability dropping and
+    resource limits, without external libraries. Degrades gracefully with a
+    report when a feature is unavailable. A drop-in replacement for the 'unix'
+    package: every function it exports is provided with the same name and
+    arguments.
 License: MIT + file LICENSE
+Copyright: file inst/COPYRIGHTS
+URL: https://pedrobtz.github.io/landlock/, https://github.com/pedrobtz/landlock
+BugReports: https://github.com/pedrobtz/landlock/issues
+OS_type: unix
+SystemRequirements: Linux kernel >= 5.13 for Landlock; seccomp and
+    capabilities need Linux; resource limits and fork work on any Unix-alike
 Encoding: UTF-8
+Language: en-US
 Roxygen: list(markdown = TRUE)
 Suggests: 
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
-URL: https://pedrobtz.github.io/landlock/
 Config/roxygen2/version: 8.1.0

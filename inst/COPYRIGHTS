@@ -1,0 +1,50 @@
+landlock is distributed under the MIT licence (see LICENSE). It contains
+material from two other sources.
+
+1. Linux kernel user-space API constants
+
+   src/compat/*.h define numeric constants and structure layouts taken from
+   the Linux kernel's user-space API headers:
+
+     include/uapi/linux/landlock.h
+     include/uapi/linux/seccomp.h
+     include/uapi/linux/audit.h
+     include/uapi/linux/capability.h
+     include/uapi/linux/prctl.h
+     include/uapi/asm-generic/unistd.h
+
+   Copyright (C) the Linux kernel contributors, including
+   Mickael Salaun (Landlock) and Will Drewry and Kees Cook (seccomp).
+
+   These headers are licensed GPL-2.0 WITH Linux-syscall-note. The
+   Linux-syscall-note states that user-space programs which use the kernel
+   through normal system calls, including by using these headers, are not
+   derived works of the kernel. landlock uses them only in that way and copies
+   no kernel code beyond the constants and structure definitions.
+
+2. Tests ported from the 'unix' package
+
+   tests/testthat/test-unix-forking.R and tests/testthat/test-unix-process.R
+   are adapted from the 'unix' package (https://github.com/jeroen/unix),
+   distributed under the MIT licence:
+
+     Copyright (c) 2017 Jeroen Ooms
+
+     Permission is hereby granted, free of charge, to any person obtaining a
+     copy of this software and associated documentation files (the
+     "Software"), to deal in the Software without restriction, including
+     without limitation the rights to use, copy, modify, merge, publish,
+     distribute, sublicense, and/or sell copies of the Software, and to permit
+     persons to whom the Software is furnished to do so, subject to the
+     following conditions:
+
+     The above copyright notice and this permission notice shall be included
+     in all copies or substantial portions of the Software.
+
+     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+     OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+     MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+     NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+     DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+     OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+     USE OR OTHER DEALINGS IN THE SOFTWARE.
