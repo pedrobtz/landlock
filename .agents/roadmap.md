@@ -475,23 +475,40 @@ CI and reads correctly.
       the same commit. This replaces R-hub: every flavour on CRAN's
       "additional issues" page that applies to this package is covered by
       r-actions. win-builder is irrelevant (`OS_type: unix`).
-- [ ] `urlchecker::url_check()`; `tools::checkRd` via check;
+- [x] `urlchecker::url_check()`; `tools::checkRd` via check;
       `goodpractice::gp()` as a hint source, not a gate.
-- [ ] Run the `/cran-extrachecks` and `/review-cran-submission` skills on
+- [x] Run the `/cran-extrachecks` and `/review-cran-submission` skills on
       the package and close every item they raise.
-- [ ] Compiled-code NOTE audit: `tools:::check_compiled_code` style scan for
+- [x] Compiled-code NOTE audit: `tools:::check_compiled_code` style scan for
       `exit`, `_exit`, `abort`, `printf`, `stdout`, `stderr` symbols in the
       built `.so`. With `raise(SIGKILL)` there should be none; if any remain,
       remove them rather than explain them.
-- [ ] DESCRIPTION final pass: Title in Title Case without the package name,
+- [x] DESCRIPTION final pass: Title in Title Case without the package name,
       Description without "This package", software names quoted, URL and
       BugReports present, `Authors@R` complete, `Date` absent (CRAN derives
       it), `Language: en-US`.
-- [ ] `cran-comments.md`: test environments, check results, "New submission",
+- [x] `cran-comments.md`: test environments, check results, "New submission",
       and one paragraph on why the package forks and why `OS_type: unix`.
       If `_exit` was kept after all, this is where it is justified with the
       `parallel` and `processx` precedent.
-- [ ] Reverse dependencies: none. Note it in cran-comments.
+- [x] Reverse dependencies: none. Note it in cran-comments.
+
+Done in Stage 7 rather than Stage 8: the version is bumped to 0.1.0
+here, because `R CMD check --as-cran` with the incoming checks on gives a
+NOTE for `0.0.0.9000` ("Version contains large components") and the exit
+criterion is a clean check. The review skill found nothing else to fix: no
+misspellings or bad URLs in the incoming check, every exported topic has
+examples and a `\value`, the tarball holds no build artefacts, and the
+shared library references no flagged symbols and only public R API entry
+points. win-builder does not apply (`OS_type: unix`); R-hub is replaced by
+the r-actions containers and the native ARM runner.
+
+The architecture legs found five real problems before this point: a test
+that assumed `getppid()` returns `-1` (i386 and musl return `-errno`),
+Landlock tests left behind by the Stage 5 scratch-directory change, tests
+reading `R.home()/COPYING` (absent on Alpine), a harness that used
+`SYS_getpgrp` (absent on aarch64), and QEMU's inability to test seccomp,
+which moved aarch64 to native `ubuntu-24.04-arm` runners.
 
 Exit criteria: every check listed above is clean; cran-comments.md written;
 a tag candidate commit on `main`.
@@ -501,8 +518,7 @@ a tag candidate commit on `main`.
 ## Stage 8 — Submission and release
 
 - [ ] `usethis::use_release_issue(version = "0.1.0")` and work the generated
-      checklist; `usethis::use_version("minor")` sets `0.1.0`; update
-      `NEWS.md` heading.
+      checklist. (`Version: 0.1.0` and the NEWS heading were set in Stage 7.)
 - [ ] `devtools::submit_cran()` or the web form at
       `https://cran.r-project.org/submit.html`; confirm the maintainer email
       within the hour it arrives.
