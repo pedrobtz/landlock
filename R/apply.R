@@ -43,14 +43,20 @@ apply_policy <- function(p, strict = !isTRUE(p$best_effort)) {
   }
 
   # Landlock (step 7)
-  want_fs <- !is.null(p$fs)
+  want_fs <- !is.null(p$fs) || isTRUE(p$fs_tmp)
   want_net <- !is.null(p$net)
   want_scope <- !is.null(p$scope) && (p$scope$signal || p$scope$abstract_unix)
   if (want_fs || want_net || want_scope) {
-    rules <- landlock_rules(p$fs)
+    fsr <- p$fs
+    if (isTRUE(p$fs_tmp)) {
+      scratch <- .state$child_tmp %||% tempdir()
+      fsr <- rbind(fsr, data.frame(path = scratch, mode = fs_modes[["read"]] + fs_modes[["write"]],
+                                   stringsAsFactors = FALSE))
+    }
+    rules <- landlock_rules(fsr)
     log <- if (is.null(p$log)) 0L else if (isTRUE(p$log)) 2L else 1L
     flags <- c(want_fs, want_net, want_scope && p$scope$signal, want_scope && p$scope$abstract_unix,
-               log, !strict, as.integer(getOption("landlock.force_abi", 0L)))
+               log, !strict, force_abi())
     r <- .Call(C_ll_restrict, rules$path, rules$mode,
                p$net$bind %||% integer(), p$net$connect %||% integer(), as.integer(flags))
     used <- r[[1]]
@@ -113,7 +119,10 @@ apply_policy <- function(p, strict = !isTRUE(p$best_effort)) {
     for (name in names(p$limits)) {
       cur <- .Call(C_rlimit_get, name)
       if (anyNA(cur)) next
-      v <- min(p$limits[[name]], cur[[2]])
+      want <- p$limits[[name]]
+      if (!is.numeric(want) || length(want) != 1L || is.na(want) || want < 0)
+        stop("limits(): invalid value for ", name, call. = FALSE)
+      v <- min(want, cur[[2]])
       .Call(C_rlimit_set, name, v, v)
       shown <- c(shown, paste0(name, "=", if (is.finite(v)) format(v, scientific = FALSE) else "unlimited"))
     }
@@ -126,6 +135,19 @@ apply_policy <- function(p, strict = !isTRUE(p$best_effort)) {
   report <- structure(report, landlock_abi = abi, class = c("lk_report", "data.frame"))
   .state$last_report <- report
   invisible(report)
+}
+
+# Testing hook: pretend the kernel offers at most this Landlock ABI (or,
+# with -1, none). Anything but a whole number from -1 to 7 is ignored.
+force_abi <- function() {
+  v <- getOption("landlock.force_abi")
+  if (is.null(v)) return(0L)
+  ok <- is.numeric(v) && length(v) == 1L && !is.na(v) && v == round(v) && v >= -1 && v <= 7
+  if (!ok) {
+    warning("ignoring invalid option landlock.force_abi", call. = FALSE)
+    return(0L)
+  }
+  as.integer(v)
 }
 
 ports_text <- function(v) if (length(v)) paste(v, collapse = ", ") else "none"

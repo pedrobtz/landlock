@@ -89,6 +89,8 @@ int lk_setids(uid_t uid, gid_t gid)
 #endif
     }
     if (uid != (uid_t) -1) {
+        if (gid == (gid_t) -1 && geteuid() == 0 && setgroups(0, NULL) != 0)
+            return -errno;
 #ifdef __linux__
         if (setresuid(uid, uid, uid) != 0)
             return -errno;

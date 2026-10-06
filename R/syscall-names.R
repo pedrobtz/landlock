@@ -241,5 +241,6 @@ syscall_names <- c(
   "rt_sigprocmask",
   "rt_sigreturn",
   "sigaltstack",
-  "sched_yield"
+  "sched_yield",
+  "socketcall"
 )

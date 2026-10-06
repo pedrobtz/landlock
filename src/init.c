@@ -9,7 +9,7 @@ SEXP C_ll_abi(void);
 SEXP C_ll_restrict(SEXP paths, SEXP modes, SEXP bind, SEXP connect, SEXP flags);
 SEXP C_sc_table(void);
 SEXP C_sc_lookup(SEXP names);
-SEXP C_sc_deny(SEXP nrs, SEXP action, SEXP errnum);
+SEXP C_sc_install(SEXP nrs, SEXP actions, SEXP errnums, SEXP deny_clone_ns);
 SEXP C_sc_status(void);
 SEXP C_errno_value(SEXP name);
 SEXP C_cap_last(void);
@@ -35,7 +35,8 @@ SEXP C_aa_change_profile(SEXP profile);
 SEXP C_userns_works(void);
 SEXP C_user_info(SEXP input);
 SEXP C_group_info(SEXP input);
-SEXP C_fork_eval(SEXP fun, SEXP timeout, SEXP outfun, SEXP errfun, SEXP close_fds);
+SEXP C_fork_eval(SEXP fun, SEXP timeout, SEXP outfun, SEXP errfun, SEXP close_fds,
+                 SEXP max_result);
 SEXP C_child_abort(void);
 SEXP C_write_frame(SEXP type, SEXP data);
 SEXP C_exec(SEXP cmd, SEXP args);
@@ -43,6 +44,8 @@ SEXP C_strsignal(SEXP sig);
 SEXP C_test_open_fd(SEXP path);
 SEXP C_test_read_fd(SEXP fd);
 SEXP C_test_close_fd(SEXP fd);
+SEXP C_test_clone_newuser(void);
+SEXP C_test_clone3_errno(void);
 SEXP C_freeze(SEXP interrupt);
 
 static const R_CallMethodDef call_methods[] = {
@@ -50,7 +53,7 @@ static const R_CallMethodDef call_methods[] = {
     {"C_ll_restrict", (DL_FUNC) &C_ll_restrict, 5},
     {"C_sc_table", (DL_FUNC) &C_sc_table, 0},
     {"C_sc_lookup", (DL_FUNC) &C_sc_lookup, 1},
-    {"C_sc_deny", (DL_FUNC) &C_sc_deny, 3},
+    {"C_sc_install", (DL_FUNC) &C_sc_install, 4},
     {"C_sc_status", (DL_FUNC) &C_sc_status, 0},
     {"C_errno_value", (DL_FUNC) &C_errno_value, 1},
     {"C_cap_last", (DL_FUNC) &C_cap_last, 0},
@@ -76,7 +79,7 @@ static const R_CallMethodDef call_methods[] = {
     {"C_userns_works", (DL_FUNC) &C_userns_works, 0},
     {"C_user_info", (DL_FUNC) &C_user_info, 1},
     {"C_group_info", (DL_FUNC) &C_group_info, 1},
-    {"C_fork_eval", (DL_FUNC) &C_fork_eval, 5},
+    {"C_fork_eval", (DL_FUNC) &C_fork_eval, 6},
     {"C_child_abort", (DL_FUNC) &C_child_abort, 0},
     {"C_write_frame", (DL_FUNC) &C_write_frame, 2},
     {"C_exec", (DL_FUNC) &C_exec, 2},
@@ -84,6 +87,8 @@ static const R_CallMethodDef call_methods[] = {
     {"C_test_open_fd", (DL_FUNC) &C_test_open_fd, 1},
     {"C_test_read_fd", (DL_FUNC) &C_test_read_fd, 1},
     {"C_test_close_fd", (DL_FUNC) &C_test_close_fd, 1},
+    {"C_test_clone_newuser", (DL_FUNC) &C_test_clone_newuser, 0},
+    {"C_test_clone3_errno", (DL_FUNC) &C_test_clone3_errno, 0},
     {"C_freeze", (DL_FUNC) &C_freeze, 1},
     {NULL, NULL, 0}
 };

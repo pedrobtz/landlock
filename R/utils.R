@@ -35,7 +35,9 @@ parse_size <- function(x, what) {
   m <- regmatches(x, regexec("^\\s*([0-9.]+)\\s*([kKmMgGtT]?)[bB]?\\s*$", x))[[1]]
   if (!length(m)) stop(what, ": cannot read size \"", x, "\"")
   mult <- c(" " = 1, k = 1024, m = 1024^2, g = 1024^3, t = 1024^4)[[if (nzchar(m[3])) tolower(m[3]) else " "]]
-  as.double(m[2]) * mult
+  v <- suppressWarnings(as.double(m[2])) * mult
+  if (is.na(v)) stop(what, ": cannot read size \"", x, "\"")
+  v
 }
 
 format_size <- function(x) {

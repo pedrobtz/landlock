@@ -72,6 +72,16 @@ int lk_sc_status(void);                         /* 0 none, 1 strict, 2 filter */
  * Linux. */
 int lk_sc_deny(const int *nrs, size_t n, int action, int errnum, int *tsync);
 
+/* The general form: one action per call, and optionally refuse clone()
+ * with any CLONE_NEW* flag (EPERM), which a plain deny of unshare/setns
+ * does not cover. */
+struct lk_sc_rule {
+    int nr;
+    int action;   /* LK_SC_* */
+    int errnum;   /* for LK_SC_ERRNO */
+};
+int lk_sc_install(const struct lk_sc_rule *rules, size_t n, int deny_clone_ns, int *tsync);
+
 /* ---- Capabilities and no_new_privs (caps.c) ---------------------------- */
 
 int lk_cap_last(void);                          /* /proc/sys/kernel/cap_last_cap, fallback 40 */
@@ -89,7 +99,8 @@ int lk_rlimit_lookup(const char *name);
 int lk_rlimit_get(int res, uint64_t *soft, uint64_t *hard);   /* UINT64_MAX = unlimited */
 int lk_rlimit_set(int res, uint64_t soft, uint64_t hard);
 
-/* setgroups (root only), then gid, then uid; (uid_t)-1 / (gid_t)-1 skip. */
+/* setgroups (root only), then gid, then uid; (uid_t)-1 / (gid_t)-1 skip.
+ * Root switching uid without a gid still loses its supplementary groups. */
 int lk_setids(uid_t uid, gid_t gid);
 
 enum { LK_ID_UID = 0, LK_ID_EUID = 1, LK_ID_GID = 2, LK_ID_EGID = 3 };
@@ -113,9 +124,9 @@ int lk_set_nonblock(int fd);
 int lk_write_all(int fd, const void *buf, size_t len);
 int lk_devnull_stdin(void);                /* /dev/null on fd 0 */
 
-/* Close every fd >= lowfd except those in keep. close_range(2) where the
- * kernel has it, else iterate /proc/self/fd or /dev/fd. */
-int lk_close_from(int lowfd, const int *keep, size_t nkeep);
+/* Point every open fd >= lowfd except those in keep at /dev/null, with
+ * close-on-exec. Replaced rather than closed: see proc.c. */
+int lk_fd_hygiene(int lowfd, const int *keep, size_t nkeep);
 
 struct lk_buf {
     char *data;
@@ -125,11 +136,14 @@ void lk_buf_free(struct lk_buf *b);
 
 /* One poll() slice of at most slice_ms. Appends whatever is readable on
  * each fds[i] to bufs[i]; an fd at end-of-file is closed and set to -1.
- * Then reaps pid with WNOHANG; once reaped, drains every remaining fd and
- * sets *done = 1 and *status (waitpid status, or -1 when someone else
- * reaped the child). Returns 0 or -errno. The caller loops, which keeps the
- * core free of R while the R adapter checks for interrupts between slices.
- * Draining while waiting avoids the 64 KiB pipe deadlock. */
+ * Then checks whether pid has exited (waitid WNOWAIT); once it has, kills
+ * its process group (stray grandchildren) while the zombie still pins the
+ * group id, reaps it, sets *done = 1 and *status (waitpid status, or -1
+ * when someone else reaped the child), and drains every remaining fd.
+ * Returns 0 or -errno; *done is set before any drain error. The caller
+ * loops, which keeps the core free of R while the R adapter checks for
+ * interrupts between slices. Draining while waiting avoids the 64 KiB pipe
+ * deadlock. */
 int lk_wait_collect(pid_t pid, int *fds, size_t nfds, int slice_ms,
                     struct lk_buf *bufs, int *status, int *done);
 

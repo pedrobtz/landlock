@@ -58,8 +58,8 @@ policy <- function(best_effort = TRUE, log = NULL) {
 }
 
 new_policy <- function(best_effort = TRUE, log = NULL) {
-  structure(list(fs = NULL, net = NULL, scope = NULL, limits = NULL, ids = NULL,
-                 apparmor = NULL, syscalls = NULL, caps = NULL,
+  structure(list(fs = NULL, fs_tmp = FALSE, net = NULL, scope = NULL, limits = NULL,
+                 ids = NULL, apparmor = NULL, syscalls = NULL, caps = NULL,
                  best_effort = best_effort, log = log),
             class = "lk_policy")
 }
@@ -74,9 +74,16 @@ fs_modes <- c(read = 1L, write = 2L, exec = 4L)
 #' @rdname policy
 #' @param p A policy.
 #' @param read,write,exec,rw Character vectors of paths.
+#' @param tmp If `TRUE`, also allow reading and writing the call's own
+#'   temporary directory: `tmp` of [eval_safe()], the child's `TMPDIR`. It is
+#'   created for the call and, by default, removed afterwards. The session's
+#'   [tempdir()] is deliberately not granted: the session may later trust
+#'   what it finds there.
 #' @export
-fs <- function(p, read = NULL, write = NULL, exec = NULL, rw = NULL) {
+fs <- function(p, read = NULL, write = NULL, exec = NULL, rw = NULL, tmp = FALSE) {
   check_policy(p)
+  stopifnot(is.logical(tmp), length(tmp) == 1L, !is.na(tmp))
+  if (tmp) p$fs_tmp <- TRUE
   add <- function(paths, mode) {
     if (is.null(paths)) return(NULL)
     if (!is.character(paths) || anyNA(paths)) stop("fs(): paths must be a character vector")
@@ -150,17 +157,28 @@ limits <- function(p, memory = NULL, cpu = NULL, fsize = NULL, nofile = NULL, pi
 #' @export
 ids <- function(p, uid = NULL, gid = NULL) {
   check_policy(p)
-  p$ids <- list(uid = resolve_id(uid, "user"), gid = resolve_id(gid, "group"))
+  p$ids <- resolve_ids(uid, gid)
   p
+}
+
+# A uid without a gid takes the user's primary group, so root switching
+# user never keeps group 0 (and the supplementary groups are replaced).
+resolve_ids <- function(uid, gid) {
+  u <- resolve_id(uid, "user")
+  g <- resolve_id(gid, "group")
+  if (!is.na(u) && is.na(g)) g <- user_info(u)$gid
+  list(uid = u, gid = g)
 }
 
 resolve_id <- function(x, kind) {
   if (is.null(x)) return(NA_integer_)
-  if (length(x) != 1L || is.na(x)) stop(kind, " must be a single id or name")
+  if (length(x) != 1L || is.na(x)) stop(kind, " must be a single id or name", call. = FALSE)
   if (is.character(x)) {
     info <- if (kind == "user") user_info(x) else group_info(x)
     return(if (kind == "user") info$uid else info$gid)
   }
+  if (!is.numeric(x) || x < 0 || x > .Machine$integer.max || x != round(x))
+    stop(kind, " id must be a whole number between 0 and ", .Machine$integer.max, call. = FALSE)
   as.integer(x)
 }
 
@@ -209,6 +227,7 @@ print.lk_policy <- function(x, ...) {
       if (length(paths)) cat(sprintf("  fs %-6s %s%s\n", m, paste(paths, collapse = ", "), avail(1)))
     }
   }
+  if (isTRUE(x$fs_tmp)) cat("  fs tmp    the call's own temporary directory (read and write)", avail(1), "\n")
   ports <- function(v) if (length(v)) paste(v, collapse = ", ") else "none"
   if (!is.null(x$net))
     cat(sprintf("  tcp       bind: %s; connect: %s%s\n", ports(x$net$bind), ports(x$net$connect), avail(4)))

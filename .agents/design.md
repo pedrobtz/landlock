@@ -111,7 +111,7 @@ landlock/
 │   │   ├── test_caps.c    bounding set empty after drop
 │   │   ├── test_ns.c      unshare(USER|NS) + id map; mount tmpfs       (0.2.0)
 │   │   ├── test_lim.c     RLIMIT_NOFILE lowered → open() fails with EMFILE
-│   │   └── test_proc.c    fork + pipe + timeout kill; 1 MiB output; close_from
+│   │   └── test_proc.c    fork + pipe + timeout kill; 1 MiB output; fd hygiene
 │   └── testthat/          R-level tests (skip_if(status()$landlock_abi == 0) etc.)
 └── inst/
     ├── COPYRIGHTS         Linux uapi constants: GPL-2.0 WITH Linux-syscall-note
@@ -147,7 +147,7 @@ No `fprintf`, no `exit`, no `_exit` (§5.6), no globals except the syscall table
 Applied in the child (or the current process for `confine()`):
 
 ```
- 0. fd hygiene    close every fd except 0/1/2 and the pipe write ends (child only; §11)
+ 0. fd hygiene    every fd except 0/1/2 and the result pipe -> /dev/null (child only; §11)
  1. cgroup        join/create sub-cgroup, write limits        (needs: write access to own cgroup dir)
  2. unshare user  CLONE_NEWUSER, then write setgroups/uid_map/gid_map
  3. unshare rest  CLONE_NEWNS | NEWPID | NEWNET | NEWIPC | NEWUTS | NEWCGROUP
@@ -409,9 +409,12 @@ int   lk_dup2(int from, int to);
 int   lk_set_nonblock(int fd);
 int   lk_write_all(int fd, const void *buf, size_t len);
 int   lk_devnull_stdin(void);
-int   lk_close_from(int lowfd, const int *keep, size_t nkeep);
-/* close_range(2) over the gaps between kept fds where available, else list
-   /proc/self/fd (Linux) or /dev/fd (macOS) in batches: no malloc in a fresh child */
+int   lk_fd_hygiene(int lowfd, const int *keep, size_t nkeep);
+/* point every other fd >= lowfd at /dev/null, close-on-exec. Replaced, not
+   closed: R objects inherited from the session (connections, a pdf() device)
+   still hold the numbers, and after a close the child's next open() would reuse
+   one and a stale write would land in the wrong file (seen with R CMD check's
+   example pdf device). No malloc: this runs in a freshly forked child. */
 struct lk_buf { char *data; size_t len, cap; };
 void  lk_buf_free(struct lk_buf *b);
 int   lk_wait_collect(pid_t pid, int *fds, size_t nfds, int slice_ms,
@@ -544,7 +547,7 @@ the package's own exports, documented and tested as such (§15), living in
 parent:  three close-on-exec pipes: result, stdout, stderr; fflush(NULL)
          pid <- fork()
 child:   setpgid(0, 0); stdin <- /dev/null; dup2 the pipes onto 1 and 2
-         if a policy is given: lk_close_from(3, keep = result fd)       # step 0 of section 4
+         if a policy is given: lk_fd_hygiene(3, keep = result fd)      # step 0 of section 4
          R_UnwindProtect(body, cleanup):
            body:    child_prepare(): q() guard, TMPDIR <- tmp, sink() to /dev/fd/1 and /dev/fd/2
                     tryCatch(apply_policy(); withVisible(eval(expr))) -> serialize(list(ok, value | error, report))
@@ -561,6 +564,12 @@ parent:  R_UnwindProtect(loop, cleanup):
 ```
 
 Result-pipe frames: a type byte, an 8-byte native `double` length, the bytes.
+`F` reports a setup failure in the child (fd hygiene, stdio redirection)
+before any user code runs. Under a policy the child is hostile and can write
+frames of its own: the session reads the outcome without evaluating it
+(plain list, `.subset2()`, report and condition rebuilt from plain fields),
+caps the result at `options(landlock.max_result)` (2 GiB), and documents the
+returned value as untrusted (see `.agents/security.md`).
 `P` is the payload; `R` is the report `run()` sends before `exec`; `X` marks
 that `run()` reached `exec()`. A truncated frame (the child died mid-write) is
 dropped. The frame stream is what tells success from death, never the wait
@@ -700,8 +709,9 @@ aarch64 — only these two; otherwise use the prctl path).
 - Landlock: per-thread; seccomp: TSYNC. `confine()` warns if `/proc/self/task`
   has > 1 entry and no TSYNC-equivalent exists for Landlock.
 - fds: the forked child inherits every fd. Before restricting, close everything
-  except 0/1/2 and the three pipe write ends (`lk_close_from(3, keep, n)` via
-  `/proc/self/fd` or `close_range(2)` when available). Otherwise an inherited
+  except 0/1/2 and the result pipe: each is pointed at `/dev/null`
+  (`lk_fd_hygiene()`), not closed, so stale R objects cannot write into a
+  reused number. Otherwise an inherited
   fd to a file outside the allowed hierarchy is a hole (Landlock does not
   revoke already-open fds). This is step 0 of §4 and ships in 0.1.0 (M1), not
   M4: a sandbox with a known hole is not a first release.
@@ -844,7 +854,7 @@ which permits user-space use); `LICENSE.note` stays for human readers.
 
 | M | Deliverable | Definition of done |
 |---|---|---|
-| M1 | `ll.c`, `lim.c`, `proc.c` (incl. `lk_close_from`), `rglue.c`; the full `unix` API (§15) incl. `profile=`; `status()`, `restrict_self()`, `eval_safe()`, `run()` without pid-ns (policy = fs + net + limits + ids + timeout); presets as R objects | C harness green; `unix`'s ported test suite green; `eval_safe(readLines("/etc/passwd"), policy = preset("numeric"))` errors with EACCES; pipe-deadlock and fd-hygiene tests |
+| M1 | `ll.c`, `lim.c`, `proc.c` (incl. `lk_fd_hygiene`), `rglue.c`; the full `unix` API (§15) incl. `profile=`; `status()`, `restrict_self()`, `eval_safe()`, `run()` without pid-ns (policy = fs + net + limits + ids + timeout); presets as R objects | C harness green; `unix`'s ported test suite green; `eval_safe(readLines("/etc/passwd"), policy = preset("numeric"))` errors with EACCES; pipe-deadlock and fd-hygiene tests |
 | M2 | `sc.c`, `caps.c`; `syscalls()`, `caps()`; presets `dangerous`, `no_exec`, `no_net` | TSYNC install; seccomp test passes as non-root |
 | M3 | `ns.c`; `namespaces()`, `mounts()`; `run()` with pid-ns double fork | userns + tmpfs `/tmp` in `eval_safe`; AppArmor userns profile for Ubuntu 24.04 shipped and documented |
 | M4 | `cgroup.R`; streaming stdout | memory.max honoured under systemd-run |
@@ -906,6 +916,10 @@ submission must not copy that):
   `/dev/null`, so `readline()` returns `""`);
 - output is captured with `sink()` rather than by replacing the console.
 The ported tests change only the `tempdir()` assertion accordingly.
+One deliberate change for security: `uid` without `gid` switches to the
+user's primary group and drops the caller's supplementary groups, where
+`unix` keeps them (root would otherwise keep group 0). The default `tmp` is
+removed after the call, where `unix` leaves it in the session temp directory.
 
 Migration notes for `unix` users go in the `getting-started` vignette: the
 only visible differences are the extra `policy` argument on `eval_safe()`,

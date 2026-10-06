@@ -254,7 +254,7 @@ with no R in sight.
 - [x] `proc.c`: `lk_fork`, `lk_pipe` (`O_CLOEXEC`), `lk_dup2`,
       `lk_write_all`, `lk_wait_collect` (poll loop with slice argument,
       `EINTR` handling, drains all fds, SIGKILL on timeout, `waitpid`),
-      `lk_kill`, `lk_close_from` (fd hygiene), `lk_child_exit` (close pipe
+      `lk_kill`, `lk_fd_hygiene` (fd hygiene; was `lk_close_from`, see security.md #2), `lk_child_exit` (close pipe
       write ends, `raise(SIGKILL)`).
 - [x] `lk.h`: every prototype, `(void)` on empty parameter lists
       (`-Wstrict-prototypes` is on in R-devel checks), no R headers.
@@ -264,7 +264,7 @@ with no R in sight.
       → ok; file-not-directory rule accepted; ABI 0 → report all zero, return
       0 in best-effort, `-ENOTSUP` strict), `test_lim.c` (`RLIMIT_NOFILE`
       lowered → `open` fails with `EMFILE`), `test_proc.c` (fork + pipe +
-      timeout kill; 1 MiB child output does not deadlock; `close_from` leaves
+      timeout kill; 1 MiB child output does not deadlock; fd hygiene leaves
       only the kept fds).
 
 Added beyond the plan: `force_abi` in the policy so the harness stacks one
@@ -387,24 +387,31 @@ Goal: the things a CRAN reviewer or a security-minded user will probe first.
 - [ ] `workflow_dispatch` the `arch` workflow and get i386, musl and aarch64
       green: this is where the seccomp arch table, `sc_table.h` and the
       `__NR_*` fallbacks are proven.
-- [ ] Interrupt test: start `eval_safe(Sys.sleep(10))`, send SIGINT to the
+- [x] Interrupt test: start `eval_safe(Sys.sleep(10))`, send SIGINT to the
       parent from a helper, assert the child is gone within a second.
-- [ ] Zombie audit: every exit path of `eval_safe()` and `run()` reaps the
+- [x] Zombie audit: every exit path of `eval_safe()` and `run()` reaps the
       child (normal, timeout, interrupt, parent error between fork and wait).
-- [ ] fd-leak audit: in the child, after `lk_close_from`, `/proc/self/fd`
+- [x] fd-leak audit: in the child, after `lk_close_from`, `/proc/self/fd`
       lists exactly the expected set; a test opens a file outside the allowed
       hierarchy before `eval_safe()` and asserts the child cannot read from the
       inherited fd number.
-- [ ] Thread caveat: `confine()` errors in a multi-threaded session unless
+- [x] Thread caveat: `confine()` errors in a multi-threaded session unless
       `force = TRUE`; test by setting `OPENBLAS_NUM_THREADS` or by starting a
       `parallel` cluster is unreliable, so test the `/proc/self/task` branch
       directly with a mocked count.
-- [ ] Review `apply_policy()` against §4 ordering with a checklist in the
+- [x] Review `apply_policy()` against §4 ordering with a checklist in the
       code comments: anything reordered must say why.
-- [ ] Run `/security-review` on the branch and the `critical-code-reviewer`
+- [x] Run `/security-review` on the branch and the `critical-code-reviewer`
       skill on `src/`; fix what they find.
-- [ ] Check `R CMD check` wall time: examples under 5 s each, tests under
+- [x] Check `R CMD check` wall time: examples under 5 s each, tests under
       60 s total.
+
+Done differently: the security review ran as an independent read-only
+reviewer over the C core, the adapter and the R engine; ten findings, all
+fixed with regression tests, are recorded with the accepted residual risks in
+`.agents/security.md`. Exit-path tests (interrupt as a real interrupt
+condition, error in an output callback, grandchildren, `run()` timeout,
+descriptor counts) are in `test-hardening.R`. Local suite: about 15 s.
 
 Exit criteria: `native-checks` fully green under the `full` profile and
 `arch` green on all three legs; interrupt, zombie and fd-leak tests in the

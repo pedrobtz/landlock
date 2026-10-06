@@ -14,7 +14,7 @@
 \usage{
 policy(best_effort = TRUE, log = NULL)
 
-fs(p, read = NULL, write = NULL, exec = NULL, rw = NULL)
+fs(p, read = NULL, write = NULL, exec = NULL, rw = NULL, tmp = FALSE)
 
 net(p, bind = integer(), connect = integer())
 
@@ -53,6 +53,12 @@ logging of denials off.}
 \item{p}{A policy.}
 
 \item{read, write, exec, rw}{Character vectors of paths.}
+
+\item{tmp}{If \code{TRUE}, also allow reading and writing the call's own
+temporary directory: \code{tmp} of \code{\link[=eval_safe]{eval_safe()}}, the child's \code{TMPDIR}. It is
+created for the call and, by default, removed afterwards. The session's
+\code{\link[=tempdir]{tempdir()}} is deliberately not granted: the session may later trust
+what it finds there.}
 
 \item{bind, connect}{Integer vectors of TCP ports that may be bound to or
 connected to.}

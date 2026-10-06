@@ -25,7 +25,7 @@ Policies:
 \itemize{
 \item \code{"numeric"}: evaluate R code that only computes. Reads R, the
 installed packages and system libraries; reads and writes only the
-session's temporary directory; may execute nothing; no TCP; signals and abstract
+call's own temporary directory (the child's \code{TMPDIR}; see \code{\link[=fs]{fs()}}); may execute nothing; no TCP; signals and abstract
 sockets scoped to the sandbox; the \code{"dangerous"}, \code{"no_exec"} and
 \code{"no_net"} system calls denied; all capabilities dropped.
 \item \code{"install"}: install a package from source. As \code{"numeric"}, plus
@@ -44,7 +44,9 @@ widen the kernel's attack surface or escape a sandbox: \code{ptrace},
 \code{process_vm_readv}, mounting, namespaces, keyrings, \code{bpf},
 \code{perf_event_open}, \code{io_uring}, \code{userfaultfd}, kernel modules, \code{kexec},
 \code{reboot}, swap, clock setting, \code{open_by_handle_at}, NUMA policy calls,
-and \verb{landlock_*} and \code{seccomp} themselves (the sandbox is complete by
+\code{pidfd_getfd}, leaving the process group (\code{setsid}, \code{setpgid}, so that
+nothing outlives the call), \code{clone3} (see \code{\link[=seccomp_deny]{seccomp_deny()}}), and
+\verb{landlock_*} and \code{seccomp} themselves (the sandbox is complete by
 the time the filter is installed). Never \code{set*id} or \code{capset}, which
 the later steps of \code{\link[=apply_policy]{apply_policy()}} use.
 \item \code{"no_exec"}: \code{execve} and \code{execveat} (\code{\link[=system]{system()}} stops working).

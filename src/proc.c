@@ -15,10 +15,6 @@
 
 #ifdef __linux__
 #include <sched.h>
-#include <sys/syscall.h>
-#ifndef __NR_close_range
-#define __NR_close_range 436  /* unified numbering, every architecture */
-#endif
 #endif
 
 pid_t lk_fork(void)
@@ -100,91 +96,70 @@ static int is_kept(int fd, const int *keep, size_t nkeep)
     return 0;
 }
 
-#ifdef __linux__
-/* close_range() over the gaps between kept fds. Returns -ENOSYS when the
- * kernel predates 5.9, so the caller falls back. */
-static int close_gaps(int lowfd, const int *keep, size_t nkeep)
+/* Highest open fd number, from a listing of dir; -1 if it cannot be read. */
+static int max_listed_fd(const char *dir)
 {
-    int sorted[64];
-    size_t n = 0;
-    if (nkeep > sizeof sorted / sizeof sorted[0])
-        return -ENOSYS;  /* take the directory path */
-    for (size_t i = 0; i < nkeep; i++)
-        if (keep[i] >= lowfd)
-            sorted[n++] = keep[i];
-    for (size_t i = 1; i < n; i++)  /* insertion sort, n is tiny */
-        for (size_t j = i; j > 0 && sorted[j - 1] > sorted[j]; j--) {
-            int t = sorted[j];
-            sorted[j] = sorted[j - 1];
-            sorted[j - 1] = t;
-        }
-    /* Close [first, k - 1] before each kept fd k, then [first, ~0]. */
-    unsigned first = (unsigned) lowfd;
-    for (size_t i = 0; i < n; i++) {
-        unsigned k = (unsigned) sorted[i];
-        if (k > first && syscall(__NR_close_range, first, k - 1U, 0U) != 0)
-            return -errno;
-        if (k + 1U > first)
-            first = k + 1U;
+    DIR *d = opendir(dir);
+    if (!d)
+        return -1;
+    int max = -1;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+        char *end;
+        long v = strtol(e->d_name, &end, 10);
+        if (*end == '\0' && end != e->d_name && v > max && v < 1L << 30)
+            max = (int) v;
     }
-    if (syscall(__NR_close_range, first, ~0U, 0U) != 0)
+    closedir(d);
+    return max;
+}
+
+int lk_fd_hygiene(int lowfd, const int *keep, size_t nkeep)
+{
+    /* Inherited descriptors are replaced, not closed. Closing would free
+     * their numbers while R objects inherited from the session (open
+     * connections, a pdf() device) still refer to them: the child's next
+     * open() would get such a number and a stale write would land in the
+     * wrong file. Pointing each at /dev/null keeps the number taken, makes
+     * stale writes harmless, and takes the original file out of reach,
+     * which is the point: Landlock does not revoke open files. */
+    int null_fd = open("/dev/null", O_RDWR | O_CLOEXEC);
+    if (null_fd < 0)
         return -errno;
-    return 0;
-}
-#endif
-
-/* Close in passes: collect a batch of fd numbers, close the directory,
- * close the batch, repeat until a pass finds nothing. Closing while
- * iterating would change the directory under readdir(). No malloc: this
- * runs in a freshly forked child. */
-static int close_by_listing(const char *dir, int lowfd, const int *keep, size_t nkeep)
-{
-    for (int pass = 0; pass < 1024; pass++) {
-        DIR *d = opendir(dir);
-        if (!d)
-            return -errno;
-        int self = dirfd(d);
-        int batch[256];
-        size_t n = 0;
-        struct dirent *e;
-        while (n < sizeof batch / sizeof batch[0] && (e = readdir(d)) != NULL) {
-            char *end;
-            long v = strtol(e->d_name, &end, 10);
-            if (*end != '\0' || end == e->d_name)
-                continue;
-            int fd = (int) v;
-            if (fd < lowfd || fd == self || is_kept(fd, keep, nkeep))
-                continue;
-            batch[n++] = fd;
-        }
-        closedir(d);
-        if (n == 0)
-            return 0;
-        for (size_t i = 0; i < n; i++)
-            close(batch[i]);
-    }
-    return -EMFILE;
-}
-
-int lk_close_from(int lowfd, const int *keep, size_t nkeep)
-{
 #ifdef __linux__
-    int rc = close_gaps(lowfd, keep, nkeep);
-    if (rc != -ENOSYS && rc != -EINVAL)
-        return rc;
-    return close_by_listing("/proc/self/fd", lowfd, keep, nkeep);
+    int max = max_listed_fd("/proc/self/fd");
 #else
-    int rc = close_by_listing("/dev/fd", lowfd, keep, nkeep);
-    if (rc == 0)
-        return 0;
-    long max = sysconf(_SC_OPEN_MAX);
-    if (max < 0 || max > 65536)
-        max = 65536;
-    for (int fd = lowfd; fd < (int) max; fd++)
-        if (!is_kept(fd, keep, nkeep))
-            close(fd);
-    return 0;
+    int max = max_listed_fd("/dev/fd");
 #endif
+    if (max < 0) {
+        long lim = sysconf(_SC_OPEN_MAX);
+        max = lim < 0 || lim > 65536 ? 65535 : (int) lim - 1;
+    }
+    int rc = 0;
+    for (int fd = lowfd; fd <= max; fd++) {
+        if (fd == null_fd || is_kept(fd, keep, nkeep))
+            continue;
+        if (fcntl(fd, F_GETFD) == -1)
+            continue;  /* not open */
+        if (lk_dup2(null_fd, fd) == 0) {
+            if (fcntl(fd, F_SETFD, FD_CLOEXEC) != 0) {
+                rc = -errno;
+                break;
+            }
+            continue;
+        }
+        /* dup2() refuses a number at or above the soft RLIMIT_NOFILE, which
+         * an fd opened before the limit was lowered can have. Close it
+         * instead: above the limit, open() can never reuse the number. If
+         * close() fails with EBADF too, the fd is not this process's to use
+         * (valgrind keeps its own there), so there is nothing to protect. */
+        if (close(fd) != 0 && errno != EBADF) {
+            rc = -errno;
+            break;
+        }
+    }
+    close(null_fd);
+    return rc;
 }
 
 /* ---- collect loop ------------------------------------------------------ */
@@ -269,17 +244,32 @@ int lk_wait_collect(pid_t pid, int *fds, size_t nfds, int slice_ms,
             return rc;
     }
 
-    int st = 0;
-    pid_t w = waitpid(pid, &st, WNOHANG);
-    if (w == 0)
-        return 0;
-    if (w < 0 && errno == EINTR)
-        return 0;
-    if (w < 0 && errno != ECHILD)
-        return -errno;
-    /* Reaped (or reaped by someone else: ECHILD). What the child wrote is
-     * in the pipes now; take it. A grandchild may still hold a write end,
-     * so stop at "empty for now" rather than waiting for EOF. */
+    /* Has the child exited? Ask without reaping: while the exited child is
+     * a zombie it pins its pid and process-group id, so the group can be
+     * killed (stray grandchildren) without any risk of hitting a process
+     * that reused the number. Then reap. */
+    siginfo_t info;
+    memset(&info, 0, sizeof info);
+    if (waitid(P_PID, (id_t) pid, &info, WEXITED | WNOHANG | WNOWAIT) != 0) {
+        if (errno == EINTR)
+            return 0;
+        if (errno != ECHILD)
+            return -errno;
+        *status = -1;  /* reaped by someone else: the group id may be reused, leave it */
+    } else {
+        if (info.si_pid == 0)
+            return 0;  /* still running */
+        kill(-pid, SIGKILL);
+        int st = 0;
+        pid_t w;
+        do {
+            w = waitpid(pid, &st, 0);
+        } while (w < 0 && errno == EINTR);
+        *status = w < 0 ? -1 : st;
+    }
+    *done = 1;
+    /* What the child wrote is in the pipes now; take it. A grandchild may
+     * still hold a write end, so stop at "empty for now", not at EOF. */
     for (size_t i = 0; i < nfds; i++) {
         if (fds[i] < 0)
             continue;
@@ -287,8 +277,6 @@ int lk_wait_collect(pid_t pid, int *fds, size_t nfds, int slice_ms,
         if (rc < 0)
             return rc;
     }
-    *status = w < 0 ? -1 : st;
-    *done = 1;
     return 0;
 }
 

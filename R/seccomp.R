@@ -9,6 +9,11 @@
 #' The filter goes to every thread of the process when the kernel can do
 #' that (seccomp's TSYNC flag), otherwise only to the calling thread.
 #'
+#' Two calls get special treatment. `clone3` always fails with `ENOSYS`, so
+#' the C library falls back to `clone()`, whose flags a filter can inspect.
+#' Denying `unshare` also refuses `clone()` with any namespace flag, which
+#' would otherwise create the same namespaces.
+#'
 #' Actions: `"errno"` makes the call fail with `errno` (default `EPERM`),
 #' `"kill"` kills the process with `SIGSYS`, `"log"` allows the call but
 #' logs it to the kernel audit log, `"trap"` sends `SIGSYS` to the thread.
@@ -74,7 +79,21 @@ install_filter <- function(spec, strict) {
   }
   nrs <- .Call(C_sc_lookup, spec$deny)
   absent <- spec$deny[nrs == -1L]
-  rc <- .Call(C_sc_deny, nrs[nrs >= 0L], sc_actions[[spec$action]], spec$errno)
+  present <- spec$deny[nrs >= 0L]
+  nrs <- nrs[nrs >= 0L]
+  actions <- rep(sc_actions[[spec$action]], length(nrs))
+  errnos <- rep(spec$errno, length(nrs))
+  # clone3 must fail with ENOSYS, whatever the action: the C library then
+  # falls back to clone(), whose flags the filter can inspect (clone3 passes
+  # them in memory, out of a filter's reach). Any other answer would break
+  # thread and process creation.
+  is_clone3 <- present == "clone3"
+  actions[is_clone3] <- sc_actions[["errno"]]
+  errnos[is_clone3] <- .Call(C_errno_value, "ENOSYS")
+  # Denying unshare is meant to deny new namespaces; clone() can create them
+  # too, so refuse clone() with any CLONE_NEW* flag as well.
+  clone_ns <- "unshare" %in% spec$deny
+  rc <- .Call(C_sc_install, nrs, as.integer(actions), as.integer(errnos), clone_ns)
   if (rc[[1]] == -.Call(C_errno_value, "ENOTSUP")) {
     msg <- "seccomp filters are not supported on this architecture by this build"
     if (strict) stop(msg, call. = FALSE)
@@ -86,6 +105,7 @@ install_filter <- function(spec, strict) {
                     spec$action, if (spec$action == "errno") paste0(" ", spec$errno_name) else "")
   if (length(absent))
     detail <- paste0(detail, "; not on this architecture: ", paste(absent, collapse = ", "))
+  if (clone_ns) detail <- paste0(detail, "; clone() with namespace flags refused")
   if (rc[[2]] == 0L) detail <- paste0(detail, "; calling thread only")
   list(status = "applied", detail = detail, tsync = rc[[2]] == 1L)
 }

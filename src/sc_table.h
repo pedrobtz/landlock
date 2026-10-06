@@ -1213,5 +1213,10 @@ static const struct lk_sc_entry lk_sc_table[] = {
 #else
     { "sched_yield", -1 },
 #endif
+#ifdef SYS_socketcall
+    { "socketcall", SYS_socketcall },
+#else
+    { "socketcall", -1 },
+#endif
     { NULL, -1 } /* sentinel: keeps the initializer non-empty */
 };
