@@ -134,16 +134,18 @@ priority (raise the value).</p>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu">getuid</span><span class="op">(</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1001</span>
 <span class="r-in"><span><span class="fu">getpid</span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 6462</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 6633</span>
 <span class="r-in"><span><span class="fu">getpriority</span><span class="op">(</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Changing the process is irreversible, so shown in throwaway children:</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="eval_safe.html">eval_fork</a></span><span class="op">(</span><span class="fu">setpriority</span><span class="op">(</span><span class="fu">getpriority</span><span class="op">(</span><span class="op">)</span> <span class="op">+</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
-<span class="r-in"><span><span class="fu"><a href="eval_safe.html">eval_fork</a></span><span class="op">(</span><span class="fu">setpgid</span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 6804</span>
 <span class="r-in"><span><span class="fu"><a href="eval_safe.html">eval_fork</a></span><span class="op">(</span><span class="fu">getppid</span><span class="op">(</span><span class="op">)</span><span class="op">)</span> <span class="op">==</span> <span class="fu">getpid</span><span class="op">(</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># A child of eval_fork() leads a session and process group of its own</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="eval_safe.html">eval_fork</a></span><span class="op">(</span><span class="fu">getpgid</span><span class="op">(</span><span class="op">)</span> <span class="op">==</span> <span class="fu">getpid</span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 </code></pre></div>
     </div>

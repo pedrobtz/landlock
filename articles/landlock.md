@@ -107,15 +107,18 @@ On a kernel with Landlock ABI 3 (Linux 6.2 to 6.6):
 eval_safe(1, policy = preset("numeric"))
 last_report()
 #> <landlock report> Landlock ABI 3 
-#>   landlock-fs     applied  ABI 3, 14 rules
+#>   landlock-fs     partial  ABI 3, 14 rules; not enforced at this ABI: device ioctl
 #>   landlock-net    skipped  TCP rules need Landlock ABI 4; the kernel offers 3
 #>   landlock-scope  skipped  scopes need Landlock ABI 6; the kernel offers 3
-#>   seccomp         applied  deny 76 calls (errno EPERM); not on this architecture: socketcall; clone() with namespace flags refused
+#>   seccomp         applied  deny 76 calls (errno EPERM); terminal injection ioctls refused; not on this architecture: socketcall; clone() with namespace flags refused
 #>   caps            applied  bounding set kept (needs CAP_SETPCAP); effective, permitted, inheritable and ambient cleared
+#>   limits          applied  rtprio=0
 ```
 
-When a skipped layer is not acceptable, ask for strict mode and the
-evaluation fails instead:
+`partial` means the layer is in force but the kernel’s Landlock ABI
+cannot enforce every right a write rule asks for; here, `ioctl` on
+device files needs ABI 5. When a partial or skipped layer is not
+acceptable, ask for strict mode and the evaluation fails instead:
 
 ``` r
 
@@ -131,10 +134,12 @@ tells you in advance what this machine offers.
 [`run()`](https://pedrobtz.github.io/landlock/reference/run.md) does for
 a program what
 [`eval_safe()`](https://pedrobtz.github.io/landlock/reference/eval_safe.md)
-does for R code. Under a filesystem policy the program needs `exec`
-permission on itself and on the dynamic loader, which the kernel opens
-for execution too. The presets deny `execve` outright, so build the
-policy for the program:
+does for R code, with the options a program needs: `wd`, `umask`, `env`
+and `clear_env`, `stdin` from a file, and a `grace` period between
+`SIGTERM` and `SIGKILL` at the timeout. Under a filesystem policy the
+program needs `exec` permission on itself and on the dynamic loader,
+which the kernel opens for execution too. The presets deny `execve`
+outright, so build the policy for the program:
 
 ``` r
 

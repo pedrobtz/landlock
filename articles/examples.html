@@ -78,6 +78,7 @@ that built it:</p>
 <span><span class="co">#&gt;   capabilities   none effective </span></span>
 <span><span class="co">#&gt;   user ns        yes </span></span>
 <span><span class="co">#&gt;   cgroup         v2 </span></span>
+<span><span class="co">#&gt;   TIOCSTI        restricted </span></span>
 <span><span class="co">#&gt;   AppArmor       enabled, profile unconfined</span></span></code></pre></div>
 <p>On a kernel without Landlock, or on macOS, the same code runs; the
 layers the kernel lacks are reported as skipped instead of enforced.</p>
@@ -138,9 +139,9 @@ leaving the session untouched:</p>
 <span><span class="co">#&gt;   landlock-fs     applied  ABI 7, 15 rules</span></span>
 <span><span class="co">#&gt;   landlock-net    applied  TCP bind: none; connect: none</span></span>
 <span><span class="co">#&gt;   landlock-scope  applied  signal, abstract_unix</span></span>
-<span><span class="co">#&gt;   seccomp         applied  deny 76 calls (errno EPERM); not on this architecture: socketcall; clone() with namespace flags refused</span></span>
+<span><span class="co">#&gt;   seccomp         applied  deny 76 calls (errno EPERM); terminal injection ioctls refused; not on this architecture: socketcall; clone() with namespace flags refused</span></span>
 <span><span class="co">#&gt;   caps            applied  bounding set kept (needs CAP_SETPCAP); effective, permitted, inheritable and ambient cleared</span></span>
-<span><span class="co">#&gt;   limits          applied  as=4294967296</span></span></code></pre></div>
+<span><span class="co">#&gt;   limits          applied  rtprio=0, as=4294967296</span></span></code></pre></div>
 <p>A layer the kernel cannot provide is reported as
 <code>skipped</code>. When that is not acceptable, build the policy with
 <code>policy(best_effort = FALSE)</code> and the evaluation fails
@@ -150,7 +151,7 @@ instead of running with less protection.</p>
 <h2 id="a-policy-for-a-task">A policy for a task<a class="anchor" aria-label="anchor" href="#a-policy-for-a-task"></a>
 </h2>
 <p>Presets are a starting point. For a specific job, list exactly what
-it needs. Here a function summarises a CSV file from an input directory
+it needs. Here a function summarizes a CSV file from an input directory
 and writes the result to an output directory; it may read the input,
 write the output, and nothing else of the user’s.</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
@@ -168,8 +169,8 @@ write the output, and nothing else of the user’s.</p>
 <span>  <span class="fu"><a href="../reference/policy.html">limits</a></span><span class="op">(</span>memory <span class="op">=</span> <span class="st">"4g"</span>, cpu <span class="op">=</span> <span class="fl">30</span><span class="op">)</span></span>
 <span><span class="va">task_policy</span></span>
 <span><span class="co">#&gt; &lt;landlock policy&gt; best effort </span></span>
-<span><span class="co">#&gt;   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /tmp/RtmplnBN0E/input</span></span>
-<span><span class="co">#&gt;   fs write  /tmp/RtmplnBN0E/output</span></span>
+<span><span class="co">#&gt;   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /tmp/RtmpFrQMag/input</span></span>
+<span><span class="co">#&gt;   fs write  /tmp/RtmpFrQMag/output</span></span>
 <span><span class="co">#&gt;   tcp       bind: none; connect: none</span></span>
 <span><span class="co">#&gt;   limits    as=4 GiB, cpu=30 </span></span>
 <span><span class="co">#&gt;   syscalls  deny 77 calls, action errno </span></span>
@@ -201,7 +202,7 @@ directory, or reading the output it just wrote, is refused:
 <span><span class="co">#&gt; [1] TRUE</span></span>
 <span><span class="fu"><a href="../reference/eval_safe.html">eval_safe</a></span><span class="op">(</span><span class="kw"><a href="https://rdrr.io/r/base/conditions.html" class="external-link">tryCatch</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/readLines.html" class="external-link">readLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">output</span>, <span class="st">"summary.csv"</span><span class="op">)</span><span class="op">)</span>, warning <span class="op">=</span> <span class="va">conditionMessage</span><span class="op">)</span>,</span>
 <span>          policy <span class="op">=</span> <span class="va">task_policy</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "cannot open file '/tmp/RtmplnBN0E/output/summary.csv': Permission denied"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "cannot open file '/tmp/RtmpFrQMag/output/summary.csv': Permission denied"</span></span></code></pre></div>
 <p><code><a href="https://rdrr.io/r/base/files.html" class="external-link">file.exists()</a></code> still answers: Landlock governs opening
 files, not looking at their metadata.</p>
 </div>
@@ -233,18 +234,45 @@ The program needs permission to execute itself and the dynamic loader
 <span><span class="co">#&gt; [1] 2</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rawConversion.html" class="external-link">rawToChar</a></span><span class="op">(</span><span class="va">res</span><span class="op">$</span><span class="va">stderr</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; sort: open failed: /etc/passwd: Permission denied</span></span></code></pre></div>
+<div class="section level3">
+<h3 id="working-directory-environment-and-input">Working directory, environment and input<a class="anchor" aria-label="anchor" href="#working-directory-environment-and-input"></a>
+</h3>
+<p><code><a href="../reference/run.html">run()</a></code> sets up the program’s working directory,
+environment and standard input the way a shell would, before the policy
+applies. The input file does not need to be in the policy: it is opened
+first, like a redirection.</p>
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">secret</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">output</span>, <span class="st">"input.txt"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/writeLines.html" class="external-link">writeLines</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"two"</span>, <span class="st">"one"</span><span class="op">)</span>, <span class="va">secret</span><span class="op">)</span></span>
+<span><span class="va">res</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/run.html">run</a></span><span class="op">(</span><span class="st">"sort"</span>, policy <span class="op">=</span> <span class="va">sort_policy</span>, stdin <span class="op">=</span> <span class="va">secret</span>, wd <span class="op">=</span> <span class="va">input</span>,</span>
+<span>           clear_env <span class="op">=</span> <span class="cn">TRUE</span>, env <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>LC_ALL <span class="op">=</span> <span class="st">"C"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rawConversion.html" class="external-link">rawToChar</a></span><span class="op">(</span><span class="va">res</span><span class="op">$</span><span class="va">stdout</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; one</span></span>
+<span><span class="co">#&gt; two</span></span></code></pre></div>
+<p>A program that needs time to clean up can be given a grace period
+between <code>SIGTERM</code> and <code>SIGKILL</code> when the timeout
+passes. Its output is streamed to the console here
+(<code>std_out = ""</code>), since a call that times out returns no
+result:</p>
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/run.html">run</a></span><span class="op">(</span><span class="st">"sh"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"-c"</span>, <span class="st">"trap 'echo cleaning up; exit 0' TERM; sleep 60 &amp; wait"</span><span class="op">)</span>,</span>
+<span>    timeout <span class="op">=</span> <span class="fl">1</span>, grace <span class="op">=</span> <span class="fl">2</span>, std_out <span class="op">=</span> <span class="st">""</span><span class="op">)</span></span>
+<span><span class="co">#&gt; cleaning up</span></span>
+<span><span class="co">#&gt; <span style="color: #BBBB00; font-weight: bold;">Error</span><span style="font-weight: bold;">:</span></span></span>
+<span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> timeout reached (1 sec)</span></span></code></pre></div>
+</div>
 </div>
 <div class="section level2">
 <h2 id="coming-from-unix">Coming from unix<a class="anchor" aria-label="anchor" href="#coming-from-unix"></a>
 </h2>
 <p>Code written for the ‘unix’ package runs unchanged:</p>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/eval_safe.html">eval_safe</a></span><span class="op">(</span><span class="fu"><a href="../reference/rlimit.html">rlimit_cpu</a></span><span class="op">(</span><span class="op">)</span><span class="op">$</span><span class="va">cur</span>, rlimits <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>cpu <span class="op">=</span> <span class="fl">10</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 10</span></span>
 <span><span class="fu"><a href="../reference/eval_safe.html">eval_fork</a></span><span class="op">(</span><span class="fu"><a href="../reference/process.html">getppid</a></span><span class="op">(</span><span class="op">)</span> <span class="op">==</span> <span class="fu"><a href="../reference/process.html">getpid</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] FALSE</span></span></code></pre></div>
 <p>and gains confinement by adding <code>policy</code>:</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/eval_safe.html">eval_safe</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">10</span><span class="op">)</span>, rlimits <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>cpu <span class="op">=</span> <span class="fl">10</span><span class="op">)</span>, policy <span class="op">=</span> <span class="fu"><a href="../reference/preset.html">preset</a></span><span class="op">(</span><span class="st">"numeric"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 55</span></span></code></pre></div>
 </div>

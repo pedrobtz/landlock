@@ -166,13 +166,17 @@ so. On a kernel with Landlock ABI 3 (Linux 6.2 to 6.6):</p>
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/eval_safe.html">eval_safe</a></span><span class="op">(</span><span class="fl">1</span>, policy <span class="op">=</span> <span class="fu"><a href="../reference/preset.html">preset</a></span><span class="op">(</span><span class="st">"numeric"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/last_report.html">last_report</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;landlock report&gt; Landlock ABI 3 </span></span>
-<span><span class="co">#&gt;   landlock-fs     applied  ABI 3, 14 rules</span></span>
+<span><span class="co">#&gt;   landlock-fs     partial  ABI 3, 14 rules; not enforced at this ABI: device ioctl</span></span>
 <span><span class="co">#&gt;   landlock-net    skipped  TCP rules need Landlock ABI 4; the kernel offers 3</span></span>
 <span><span class="co">#&gt;   landlock-scope  skipped  scopes need Landlock ABI 6; the kernel offers 3</span></span>
-<span><span class="co">#&gt;   seccomp         applied  deny 76 calls (errno EPERM); not on this architecture: socketcall; clone() with namespace flags refused</span></span>
-<span><span class="co">#&gt;   caps            applied  bounding set kept (needs CAP_SETPCAP); effective, permitted, inheritable and ambient cleared</span></span></code></pre></div>
-<p>When a skipped layer is not acceptable, ask for strict mode and the
-evaluation fails instead:</p>
+<span><span class="co">#&gt;   seccomp         applied  deny 76 calls (errno EPERM); terminal injection ioctls refused; not on this architecture: socketcall; clone() with namespace flags refused</span></span>
+<span><span class="co">#&gt;   caps            applied  bounding set kept (needs CAP_SETPCAP); effective, permitted, inheritable and ambient cleared</span></span>
+<span><span class="co">#&gt;   limits          applied  rtprio=0</span></span></code></pre></div>
+<p><code>partial</code> means the layer is in force but the kernel’s
+Landlock ABI cannot enforce every right a write rule asks for; here,
+<code>ioctl</code> on device files needs ABI 5. When a partial or
+skipped layer is not acceptable, ask for strict mode and the evaluation
+fails instead:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/eval_safe.html">eval_safe</a></span><span class="op">(</span><span class="fl">1</span>, policy <span class="op">=</span> <span class="fu"><a href="../reference/policy.html">policy</a></span><span class="op">(</span>best_effort <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span> <span class="op">|&gt;</span> <span class="fu"><a href="../reference/policy.html">net</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Error: Landlock: the kernel lacks a requested feature (ABI 3) and strict mode is on</span></span></code></pre></div>
@@ -183,10 +187,14 @@ offers.</p>
 <h2 id="running-programs">Running programs<a class="anchor" aria-label="anchor" href="#running-programs"></a>
 </h2>
 <p><code><a href="../reference/run.html">run()</a></code> does for a program what <code><a href="../reference/eval_safe.html">eval_safe()</a></code>
-does for R code. Under a filesystem policy the program needs
-<code>exec</code> permission on itself and on the dynamic loader, which
-the kernel opens for execution too. The presets deny <code>execve</code>
-outright, so build the policy for the program:</p>
+does for R code, with the options a program needs: <code>wd</code>,
+<code>umask</code>, <code>env</code> and <code>clear_env</code>,
+<code>stdin</code> from a file, and a <code>grace</code> period between
+<code>SIGTERM</code> and <code>SIGKILL</code> at the timeout. Under a
+filesystem policy the program needs <code>exec</code> permission on
+itself and on the dynamic loader, which the kernel opens for execution
+too. The presets deny <code>execve</code> outright, so build the policy
+for the program:</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">p</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/policy.html">policy</a></span><span class="op">(</span><span class="op">)</span> <span class="op">|&gt;</span></span>
 <span>  <span class="fu"><a href="../reference/policy.html">fs</a></span><span class="op">(</span>read <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"/usr"</span>, <span class="st">"/etc/ld.so.cache"</span><span class="op">)</span>, exec <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"/usr/bin"</span>, <span class="st">"/usr/lib"</span><span class="op">)</span><span class="op">)</span></span>

@@ -77,13 +77,16 @@ first library path), <code>port</code> for <code>"plumber"</code> (default 8000)
 installed packages and system libraries; reads and writes only the
 call's own temporary directory (the child's <code>TMPDIR</code>; see <code><a href="policy.html">fs()</a></code>); may execute nothing; no TCP; signals and abstract
 sockets scoped to the sandbox; the <code>"dangerous"</code>, <code>"no_exec"</code> and
-<code>"no_net"</code> system calls denied; all capabilities dropped.</p></li>
+<code>"no_net"</code> system calls denied, terminal-injection <code>ioctl</code>s refused; all
+capabilities dropped; no real-time scheduling (<code>rtprio = 0</code>).</p></li>
 <li><p><code>"install"</code>: install a package from source. As <code>"numeric"</code>, plus
 executing the compiler toolchain (and the dynamic loader, which the
 kernel opens for execution too) and writing to <code>lib</code>; only the
-<code>"dangerous"</code> calls are denied.</p></li>
+<code>"dangerous"</code> calls are denied. Also no real-time scheduling.</p></li>
 <li><p><code>"plumber"</code>: serve HTTP. As <code>"numeric"</code>, plus binding to <code>port</code>; the
-<code>"dangerous"</code> and <code>"no_exec"</code> calls are denied.</p></li>
+<code>"dangerous"</code> and <code>"no_exec"</code> calls are denied, sockets are limited to
+Unix, IPv4 and IPv6 (which, on i386, leaves no sockets at all; see
+<code><a href="policy.html">syscalls()</a></code>), and there is no real-time scheduling.</p></li>
 </ul><p>System call sets, character vectors for <code><a href="policy.html">syscalls()</a></code> and
 <code><a href="seccomp_deny.html">seccomp_deny()</a></code>:</p><ul><li><p><code>"dangerous"</code>: calls a sandboxed R process has no use for and that
 widen the kernel's attack surface or escape a sandbox: <code>ptrace</code>,
@@ -98,6 +101,10 @@ the later steps of <code><a href="apply_policy.html">apply_policy()</a></code> u
 <li><p><code>"no_exec"</code>: <code>execve</code> and <code>execveat</code> (<code><a href="https://rdrr.io/r/base/system.html" class="external-link">system()</a></code> stops working).</p></li>
 <li><p><code>"no_net"</code>: socket creation and use. Also stops DNS, and is the only way
 to stop UDP without a network namespace.</p></li>
+<li><p>The groups <code>"dangerous"</code> is made of, for finer choices: <code>"debug"</code>,
+<code>"mount"</code>, <code>"namespace"</code>, <code>"keyring"</code>, <code>"module"</code>, <code>"reboot"</code>,
+<code>"swap"</code>, <code>"clock"</code>, <code>"privileged"</code>, <code>"memory"</code>, <code>"kernel"</code>,
+<code>"session"</code>, <code>"sandbox"</code>.</p></li>
 </ul><p>Paths that do not exist on this system are left out of the policies.</p>
     </div>
 
@@ -110,7 +117,8 @@ to stop UDP without a network namespace.</p></li>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   fs tmp    the call's own temporary directory (read and write)  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   tcp       bind: none; connect: none</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   scope     signal, abstract_unix  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   syscalls  deny 77 calls, action errno </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   limits    rtprio=0 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   syscalls  deny 77 calls, action errno ; terminal injection blocked </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   caps      keep none </span>
 </code></pre></div>
     </div>

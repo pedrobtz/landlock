@@ -13,6 +13,7 @@ status()
 #>   capabilities   none effective 
 #>   user ns        yes 
 #>   cgroup         v2 
+#>   TIOCSTI        restricted 
 #>   AppArmor       enabled, profile unconfined
 ```
 
@@ -108,9 +109,9 @@ last_report()
 #>   landlock-fs     applied  ABI 7, 15 rules
 #>   landlock-net    applied  TCP bind: none; connect: none
 #>   landlock-scope  applied  signal, abstract_unix
-#>   seccomp         applied  deny 76 calls (errno EPERM); not on this architecture: socketcall; clone() with namespace flags refused
+#>   seccomp         applied  deny 76 calls (errno EPERM); terminal injection ioctls refused; not on this architecture: socketcall; clone() with namespace flags refused
 #>   caps            applied  bounding set kept (needs CAP_SETPCAP); effective, permitted, inheritable and ambient cleared
-#>   limits          applied  as=4294967296
+#>   limits          applied  rtprio=0, as=4294967296
 ```
 
 A layer the kernel cannot provide is reported as `skipped`. When that is
@@ -120,7 +121,7 @@ the evaluation fails instead of running with less protection.
 ## A policy for a task
 
 Presets are a starting point. For a specific job, list exactly what it
-needs. Here a function summarises a CSV file from an input directory and
+needs. Here a function summarizes a CSV file from an input directory and
 writes the result to an output directory; it may read the input, write
 the output, and nothing else of the user’s.
 
@@ -140,8 +141,8 @@ task_policy <- policy() |>
   limits(memory = "4g", cpu = 30)
 task_policy
 #> <landlock policy> best effort 
-#>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /tmp/RtmplnBN0E/input
-#>   fs write  /tmp/RtmplnBN0E/output
+#>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library, /usr, /tmp/RtmpFrQMag/input
+#>   fs write  /tmp/RtmpFrQMag/output
 #>   tcp       bind: none; connect: none
 #>   limits    as=4 GiB, cpu=30 
 #>   syscalls  deny 77 calls, action errno 
@@ -180,7 +181,7 @@ eval_safe(file.exists(file.path(output, "summary.csv")), policy = task_policy)
 #> [1] TRUE
 eval_safe(tryCatch(readLines(file.path(output, "summary.csv")), warning = conditionMessage),
           policy = task_policy)
-#> [1] "cannot open file '/tmp/RtmplnBN0E/output/summary.csv': Permission denied"
+#> [1] "cannot open file '/tmp/RtmpFrQMag/output/summary.csv': Permission denied"
 ```
 
 [`file.exists()`](https://rdrr.io/r/base/files.html) still answers:
@@ -220,6 +221,38 @@ res$status
 #> [1] 2
 cat(rawToChar(res$stderr))
 #> sort: open failed: /etc/passwd: Permission denied
+```
+
+### Working directory, environment and input
+
+[`run()`](https://pedrobtz.github.io/landlock/reference/run.md) sets up
+the program’s working directory, environment and standard input the way
+a shell would, before the policy applies. The input file does not need
+to be in the policy: it is opened first, like a redirection.
+
+``` r
+
+secret <- file.path(output, "input.txt")
+writeLines(c("two", "one"), secret)
+res <- run("sort", policy = sort_policy, stdin = secret, wd = input,
+           clear_env = TRUE, env = c(LC_ALL = "C"))
+cat(rawToChar(res$stdout))
+#> one
+#> two
+```
+
+A program that needs time to clean up can be given a grace period
+between `SIGTERM` and `SIGKILL` when the timeout passes. Its output is
+streamed to the console here (`std_out = ""`), since a call that times
+out returns no result:
+
+``` r
+
+run("sh", c("-c", "trap 'echo cleaning up; exit 0' TERM; sleep 60 & wait"),
+    timeout = 1, grace = 2, std_out = "")
+#> cleaning up
+#> Error:
+#> ! timeout reached (1 sec)
 ```
 
 ## Coming from unix

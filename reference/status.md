@@ -23,6 +23,11 @@ A list of class `lk_status` with elements:
   Landlock ABI version; 0 when Landlock is not available (older kernel,
   not built, or disabled at boot).
 
+- landlock_errata:
+
+  Bitmask of Landlock fixes the kernel reports (Linux 6.15 and later),
+  `NA` where the kernel cannot say.
+
 - seccomp, seccomp_filters:
 
   Seccomp mode of this process (0 none, 1 strict, 2 filter) and the
@@ -49,6 +54,13 @@ A list of class `lk_status` with elements:
 
   Whether AppArmor is enabled and the current profile.
 
+- tiocsti_legacy:
+
+  Whether the kernel still lets an unprivileged process push input into
+  a terminal with `TIOCSTI` (`dev.tty.legacy_tiocsti`); `NA` where the
+  setting does not exist. Confined children run without a controlling
+  terminal either way.
+
 Values that do not apply on this system are `NA`.
 
 ## Examples
@@ -62,5 +74,6 @@ status()
 #>   capabilities   none effective 
 #>   user ns        yes 
 #>   cgroup         v2 
+#>   TIOCSTI        restricted 
 #>   AppArmor       enabled, profile unconfined 
 ```

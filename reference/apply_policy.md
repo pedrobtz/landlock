@@ -39,8 +39,10 @@ confine(p, force = FALSE, strict = !isTRUE(p$best_effort))
 ## Value
 
 A report of class `lk_report`: a data frame with one row per requested
-layer and the columns `layer`, `status` (`"applied"` or `"skipped"`) and
-`detail`. Returned invisibly; also available as
+layer and the columns `layer`, `status` (`"applied"`, `"partial"` when
+the kernel's Landlock ABI cannot enforce every right a write rule asks
+for, or `"skipped"`) and `detail`. Strict mode fails instead of applying
+a partial or skipped layer. Returned invisibly; also available as
 [`last_report()`](https://pedrobtz.github.io/landlock/reference/last_report.md).
 
 ## Details

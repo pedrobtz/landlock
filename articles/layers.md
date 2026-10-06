@@ -66,6 +66,16 @@ flags, and `clone3` fails with `ENOSYS`, so the C library falls back to
 `execve`, so no program can start. `"no_net"` removes sockets, which
 also stops UDP and DNS.
 
+Three rules look at arguments, not just the call: `block_tty` refuses
+the `ioctl()` requests that push input into a terminal or reprogram it
+(`TIOCSTI`, `TIOCLINUX`), as Flatpak does; `socket_families` limits
+which kinds of socket `socket()` may create, as systemd’s
+`RestrictAddressFamilies=` does; `lock_personality` allows only the
+default execution domains, as Docker does. The `"dangerous"` set is made
+of named groups (`"mount"`, `"debug"`, `"clock"`, …), each available on
+its own through
+[`preset()`](https://pedrobtz.github.io/landlock/reference/preset.md).
+
 A deny-list rather than an allow-list: R’s system call footprint depends
 on the BLAS, on the packages loaded and on the C library, and an
 allow-list that is too tight fails in ways that are hard to diagnose.
@@ -97,6 +107,25 @@ Docker’s and containerd’s default seccomp profiles allow the Landlock
 and seccomp system calls, so every layer above works inside a container
 whose host kernel has Landlock. They block user namespaces, which a
 later version will use for mount and network isolation.
+
+## Process hygiene
+
+Whatever the policy, every child created by
+[`eval_safe()`](https://pedrobtz.github.io/landlock/reference/eval_safe.md),
+[`eval_fork()`](https://pedrobtz.github.io/landlock/reference/eval_safe.md)
+or [`run()`](https://pedrobtz.github.io/landlock/reference/run.md)
+starts a session of its own, so it has no controlling terminal and
+cannot push input into the user’s terminal, and asks the kernel to kill
+it when the R session dies, so a killed session leaves no child running
+without its timeout. A switch of user clears that request; the package
+makes it again. That request covers the child only: on a timeout or an
+interrupt the package kills the child’s whole process group, but when
+the session itself dies, processes the child started can outlive it.
+
+[`deny_write_execute()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+forbids memory that is both writable and executable (Linux 6.3), which
+stops code injected into writable memory from running. It breaks
+just-in-time compilers, so no preset uses it.
 
 ## Threads
 

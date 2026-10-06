@@ -63,6 +63,10 @@ forked child.</p>
 <dd><p>Landlock ABI version; 0 when Landlock is not
 available (older kernel, not built, or disabled at boot).</p></dd>
 
+<dt>landlock_errata</dt>
+<dd><p>Bitmask of Landlock fixes the kernel reports
+(Linux 6.15 and later), <code>NA</code> where the kernel cannot say.</p></dd>
+
 <dt>seccomp, seccomp_filters</dt>
 <dd><p>Seccomp mode of this process (0 none,
 1 strict, 2 filter) and the number of filters installed.</p></dd>
@@ -83,6 +87,12 @@ delegated (writable).</p></dd>
 <dt>apparmor</dt>
 <dd><p>Whether AppArmor is enabled and the current profile.</p></dd>
 
+<dt>tiocsti_legacy</dt>
+<dd><p>Whether the kernel still lets an unprivileged
+process push input into a terminal with <code>TIOCSTI</code>
+(<code>dev.tty.legacy_tiocsti</code>); <code>NA</code> where the setting does not exist.
+Confined children run without a controlling terminal either way.</p></dd>
+
 
 </dl><p>Values that do not apply on this system are <code>NA</code>.</p>
     </div>
@@ -97,6 +107,7 @@ delegated (writable).</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   capabilities   none effective </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   user ns        yes </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   cgroup         v2 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   TIOCSTI        restricted </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   AppArmor       enabled, profile unconfined </span>
 </code></pre></div>
     </div>

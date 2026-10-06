@@ -72,7 +72,8 @@ in the same order; <code>policy</code> is added at the end.</p>
 <span>  rlimits <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  profile <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  device <span class="op">=</span> <span class="va">pdf</span>,</span>
-<span>  policy <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  policy <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  grace <span class="op">=</span> <span class="fl">0</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">eval_fork</span><span class="op">(</span></span>
@@ -80,7 +81,8 @@ in the same order; <code>policy</code> is added at the end.</p>
 <span>  tmp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span><span class="st">"fork"</span><span class="op">)</span>,</span>
 <span>  std_out <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/showConnections.html" class="external-link">stdout</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  std_err <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/showConnections.html" class="external-link">stderr</a></span><span class="op">(</span><span class="op">)</span>,</span>
-<span>  timeout <span class="op">=</span> <span class="fl">0</span></span>
+<span>  timeout <span class="op">=</span> <span class="fl">0</span>,</span>
+<span>  grace <span class="op">=</span> <span class="fl">0</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -140,6 +142,11 @@ streams, is pointed at <code>/dev/null</code> first, because Landlock does not
 revoke files that are already open. Connections and graphics devices
 inherited from the session are therefore unusable in the child.</p></dd>
 
+
+<dt id="arg-grace">grace<a class="anchor" aria-label="anchor" href="#arg-grace"></a></dt>
+<dd><p>Seconds between <code>SIGTERM</code> and <code>SIGKILL</code> when the timeout
+passes; <code>0</code> (the default) kills at once.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -153,8 +160,14 @@ code, and be careful with anything else.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>The child is killed when <code>timeout</code> seconds of wall-clock time pass, or
-when the session is interrupted. Errors in the child are raised again in
+    <p>The child is killed when <code>timeout</code> seconds of wall-clock time pass, when
+the session is interrupted, and when the session itself dies (so a killed
+R process leaves no sandboxed child running without its timeout). On a
+timeout or an interrupt the child's whole process group is killed, which
+includes the processes it started; when the session dies, only the child
+itself is, and processes it started can outlive it. It
+runs in a session of its own, with no controlling terminal, so it cannot
+inject input into the user's terminal. Errors in the child are raised again in
 the session with their original class. Output the child writes is
 forwarded as it arrives.</p>
 <p>Some software is not fork-safe and cannot be used in the child once the

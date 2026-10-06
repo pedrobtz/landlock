@@ -57,3 +57,32 @@ First release.
   [`caps_keep()`](https://pedrobtz.github.io/landlock/reference/caps_drop_all.md),
   [`no_new_privs()`](https://pedrobtz.github.io/landlock/reference/caps_drop_all.md),
   [`setids()`](https://pedrobtz.github.io/landlock/reference/setids.md).
+
+- Features found in other sandboxes (bubblewrap, nsjail, Flatpak,
+  systemd, Docker, the Rust and Go Landlock bindings):
+
+  - every child runs in a session of its own, without a controlling
+    terminal, and dies with the R session;
+  - [`run()`](https://pedrobtz.github.io/landlock/reference/run.md)
+    gains `wd`, `umask`, `clear_env` and `stdin`;
+    [`eval_safe()`](https://pedrobtz.github.io/landlock/reference/eval_safe.md),
+    [`eval_fork()`](https://pedrobtz.github.io/landlock/reference/eval_safe.md)
+    and [`run()`](https://pedrobtz.github.io/landlock/reference/run.md)
+    gain `grace`, a period between `SIGTERM` and `SIGKILL` at the
+    timeout;
+  - [`syscalls()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+    gains `block_tty`, `socket_families` and `lock_personality`, which
+    look at system call arguments; the presets block terminal injection;
+  - the `"dangerous"` system call set is made of named groups, and
+    [`seccomp_rules()`](https://pedrobtz.github.io/landlock/reference/seccomp_rules.md)
+    lists the exact filter a policy produces;
+  - `fs(missing = "ignore")`; further
+    [`limits()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+    (`rtprio`, `nice`, `sigpending`, `msgqueue`, `rttime`, `rss`,
+    `locks`), with `rtprio = 0` in every preset;
+    [`umask()`](https://pedrobtz.github.io/landlock/reference/policy.md);
+    [`deny_write_execute()`](https://pedrobtz.github.io/landlock/reference/policy.md);
+  - reports show `partial` when Landlock cannot enforce every right of a
+    write rule;
+    [`status()`](https://pedrobtz.github.io/landlock/reference/status.md)
+    reports Landlock errata and `legacy_tiocsti`.

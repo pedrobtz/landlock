@@ -166,6 +166,16 @@ so the C library falls back to <code>clone()</code>, whose flags a
 filter can inspect. <code>"no_exec"</code> removes <code>execve</code>,
 so no program can start. <code>"no_net"</code> removes sockets, which
 also stops UDP and DNS.</p>
+<p>Three rules look at arguments, not just the call:
+<code>block_tty</code> refuses the <code>ioctl()</code> requests that
+push input into a terminal or reprogram it (<code>TIOCSTI</code>,
+<code>TIOCLINUX</code>), as Flatpak does; <code>socket_families</code>
+limits which kinds of socket <code>socket()</code> may create, as
+systemd’s <code>RestrictAddressFamilies=</code> does;
+<code>lock_personality</code> allows only the default execution domains,
+as Docker does. The <code>"dangerous"</code> set is made of named groups
+(<code>"mount"</code>, <code>"debug"</code>, <code>"clock"</code>, …),
+each available on its own through <code><a href="../reference/preset.html">preset()</a></code>.</p>
 <p>A deny-list rather than an allow-list: R’s system call footprint
 depends on the BLAS, on the packages loaded and on the C library, and an
 allow-list that is too tight fails in ways that are hard to
@@ -200,6 +210,23 @@ space, which some BLAS libraries reserve generously; set
 and seccomp system calls, so every layer above works inside a container
 whose host kernel has Landlock. They block user namespaces, which a
 later version will use for mount and network isolation.</p>
+</div>
+<div class="section level2">
+<h2 id="process-hygiene">Process hygiene<a class="anchor" aria-label="anchor" href="#process-hygiene"></a>
+</h2>
+<p>Whatever the policy, every child created by <code><a href="../reference/eval_safe.html">eval_safe()</a></code>,
+<code><a href="../reference/eval_safe.html">eval_fork()</a></code> or <code><a href="../reference/run.html">run()</a></code> starts a session of its
+own, so it has no controlling terminal and cannot push input into the
+user’s terminal, and asks the kernel to kill it when the R session dies,
+so a killed session leaves no child running without its timeout. A
+switch of user clears that request; the package makes it again. That
+request covers the child only: on a timeout or an interrupt the package
+kills the child’s whole process group, but when the session itself dies,
+processes the child started can outlive it.</p>
+<p><code><a href="../reference/policy.html">deny_write_execute()</a></code> forbids memory that is both
+writable and executable (Linux 6.3), which stops code injected into
+writable memory from running. It breaks just-in-time compilers, so no
+preset uses it.</p>
 </div>
 <div class="section level2">
 <h2 id="threads">Threads<a class="anchor" aria-label="anchor" href="#threads"></a>

@@ -52,6 +52,18 @@
 </ul></li>
 <li><p>A layer the kernel cannot provide is skipped and reported (<code><a href="../reference/last_report.html">last_report()</a></code>); <code>policy(best_effort = FALSE)</code> makes it an error. <code><a href="../reference/status.html">status()</a></code> shows what the running kernel offers.</p></li>
 <li><p>Single-layer functions for the calling process: <code><a href="../reference/restrict_self.html">restrict_self()</a></code>, <code><a href="../reference/seccomp_deny.html">seccomp_deny()</a></code>, <code><a href="../reference/caps_drop_all.html">caps_drop_all()</a></code>, <code><a href="../reference/caps_drop_all.html">caps_keep()</a></code>, <code><a href="../reference/caps_drop_all.html">no_new_privs()</a></code>, <code><a href="../reference/setids.html">setids()</a></code>.</p></li>
+<li>
+<p>Features found in other sandboxes (bubblewrap, nsjail, Flatpak, systemd, Docker, the Rust and Go Landlock bindings):</p>
+<ul><li>every child runs in a session of its own, without a controlling terminal, and dies with the R session;</li>
+<li>
+<code><a href="../reference/run.html">run()</a></code> gains <code>wd</code>, <code>umask</code>, <code>clear_env</code> and <code>stdin</code>; <code><a href="../reference/eval_safe.html">eval_safe()</a></code>, <code><a href="../reference/eval_safe.html">eval_fork()</a></code> and <code><a href="../reference/run.html">run()</a></code> gain <code>grace</code>, a period between <code>SIGTERM</code> and <code>SIGKILL</code> at the timeout;</li>
+<li>
+<code><a href="../reference/policy.html">syscalls()</a></code> gains <code>block_tty</code>, <code>socket_families</code> and <code>lock_personality</code>, which look at system call arguments; the presets block terminal injection;</li>
+<li>the <code>"dangerous"</code> system call set is made of named groups, and <code><a href="../reference/seccomp_rules.html">seccomp_rules()</a></code> lists the exact filter a policy produces;</li>
+<li>
+<code>fs(missing = "ignore")</code>; further <code><a href="../reference/policy.html">limits()</a></code> (<code>rtprio</code>, <code>nice</code>, <code>sigpending</code>, <code>msgqueue</code>, <code>rttime</code>, <code>rss</code>, <code>locks</code>), with <code>rtprio = 0</code> in every preset; <code><a href="../reference/policy.html">umask()</a></code>; <code><a href="../reference/policy.html">deny_write_execute()</a></code>;</li>
+<li>reports show <code>partial</code> when Landlock cannot enforce every right of a write rule; <code><a href="../reference/status.html">status()</a></code> reports Landlock errata and <code>legacy_tiocsti</code>.</li>
+</ul></li>
 </ul></div>
   </main></div>
 

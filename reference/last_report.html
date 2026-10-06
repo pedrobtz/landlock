@@ -66,8 +66,9 @@ has been applied in this session.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   landlock-fs     applied  ABI 7, 15 rules</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   landlock-net    applied  TCP bind: none; connect: none</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   landlock-scope  applied  signal, abstract_unix</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   seccomp         applied  deny 76 calls (errno EPERM); not on this architecture: socketcall; clone() with namespace flags refused</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   seccomp         applied  deny 76 calls (errno EPERM); terminal injection ioctls refused; not on this architecture: socketcall; clone() with namespace flags refused</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   caps            applied  bounding set kept (needs CAP_SETPCAP); effective, permitted, inheritable and ambient cleared</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   limits          applied  rtprio=0</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

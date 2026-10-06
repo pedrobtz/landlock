@@ -94,15 +94,17 @@ priority (raise the value).
 getuid()
 #> [1] 1001
 getpid()
-#> [1] 6462
+#> [1] 6633
 getpriority()
 #> [1] 0
 
 # Changing the process is irreversible, so shown in throwaway children:
 eval_fork(setpriority(getpriority() + 1))
 #> [1] 1
-eval_fork(setpgid())
-#> [1] 6804
 eval_fork(getppid()) == getpid()
+#> [1] TRUE
+
+# A child of eval_fork() leads a session and process group of its own
+eval_fork(getpgid() == getpid())
 #> [1] TRUE
 ```

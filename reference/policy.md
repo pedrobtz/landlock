@@ -14,7 +14,15 @@ or
 ``` r
 policy(best_effort = TRUE, log = NULL)
 
-fs(p, read = NULL, write = NULL, exec = NULL, rw = NULL, tmp = FALSE)
+fs(
+  p,
+  read = NULL,
+  write = NULL,
+  exec = NULL,
+  rw = NULL,
+  tmp = FALSE,
+  missing = c("error", "ignore")
+)
 
 net(p, bind = integer(), connect = integer())
 
@@ -30,14 +38,33 @@ limits(
   core = NULL,
   stack = NULL,
   data = NULL,
-  memlock = NULL
+  memlock = NULL,
+  rss = NULL,
+  locks = NULL,
+  sigpending = NULL,
+  msgqueue = NULL,
+  nice = NULL,
+  rtprio = NULL,
+  rttime = NULL
 )
 
 ids(p, uid = NULL, gid = NULL)
 
+umask(p, mask)
+
+deny_write_execute(p)
+
 apparmor(p, profile)
 
-syscalls(p, deny, action = c("errno", "kill", "log", "trap"), errno = "EPERM")
+syscalls(
+  p,
+  deny = character(),
+  action = c("errno", "kill", "log", "trap"),
+  errno = "EPERM",
+  block_tty = FALSE,
+  socket_families = NULL,
+  lock_personality = FALSE
+)
 
 caps(p, keep = character())
 ```
@@ -73,6 +100,12 @@ caps(p, keep = character())
   [`tempdir()`](https://rdrr.io/r/base/tempfile.html) is deliberately
   not granted: the session may later trust what it finds there.
 
+- missing:
+
+  What to do, when the policy is applied, with a path that does not
+  exist: `"error"` (the default) or `"ignore"` it, naming it in the
+  report. Useful for policies shared between machines.
+
 - bind, connect:
 
   Integer vectors of TCP ports that may be bound to or connected to.
@@ -85,9 +118,23 @@ caps(p, keep = character())
 
   Resource ceilings; `NULL` leaves a resource alone.
 
+- rss, locks, sigpending, msgqueue, nice, rtprio, rttime:
+
+  Further resource limits (Linux): resident set size, file locks, queued
+  signals, bytes in POSIX message queues, the nice ceiling (as
+  `20 - value`), real-time priority (`0` forbids real-time scheduling)
+  and real-time CPU time in microseconds. A limit the platform lacks is
+  skipped and reported.
+
 - uid, gid:
 
   User and group, as numeric ids or names.
+
+- mask:
+
+  File mode creation mask, as for
+  [`Sys.umask()`](https://rdrr.io/r/base/files2.html), for example
+  `"077"` so that every file the child creates is private.
 
 - profile:
 
@@ -101,6 +148,26 @@ caps(p, keep = character())
 
   See
   [`seccomp_deny()`](https://pedrobtz.github.io/landlock/reference/seccomp_deny.md).
+
+- block_tty:
+
+  If `TRUE`, refuse the `ioctl()` requests that push input into a
+  terminal or reprogram it (`TIOCSTI`, `TIOCLINUX`), as Flatpak does.
+
+- socket_families:
+
+  If not `NULL`, `socket()` may only create sockets of these families
+  (any of `"unix"`, `"inet"`, `"inet6"`, `"netlink"`, `"packet"`,
+  `"vsock"`); others fail with `EAFNOSUPPORT`. On i386 the C library
+  creates sockets through `socketcall()`, which hides the family from
+  the filter; `socketcall()` is then refused outright, so no socket of
+  any family can be created there.
+
+- lock_personality:
+
+  If `TRUE`, `personality()` may only query or set the default execution
+  domains, as in Docker's profile: no turning off address-space
+  randomization.
 
 - keep:
 
@@ -153,6 +220,14 @@ Layers and what they map to:
   see
   [`caps_drop_all()`](https://pedrobtz.github.io/landlock/reference/caps_drop_all.md).
 
+- `umask()`: the file mode creation mask of the child, so that files it
+  creates get the intended permissions.
+
+- `deny_write_execute()`: no memory mapping may become both writable and
+  executable (Linux 6.3, `PR_SET_MDWE`), which stops code injected into
+  writable memory from running. Breaks just-in-time compilers (V8,
+  LLVM); no preset uses it.
+
 ## See also
 
 [`preset()`](https://pedrobtz.github.io/landlock/reference/preset.md)
@@ -170,7 +245,7 @@ p <- policy() |>
 p
 #> <landlock policy> best effort 
 #>   fs read   /opt/R/4.6.1/lib/R, /home/runner/work/_temp/Library, /opt/R/4.6.1/lib/R/site-library, /opt/R/4.6.1/lib/R/library
-#>   fs write  /tmp/Rtmppilzp7
+#>   fs write  /tmp/RtmpgW0ZD4
 #>   tcp       bind: none; connect: none
 #>   limits    as=2 GiB, nofile=256 
 ```

@@ -40,15 +40,19 @@ Policies:
   [`fs()`](https://pedrobtz.github.io/landlock/reference/policy.md));
   may execute nothing; no TCP; signals and abstract sockets scoped to
   the sandbox; the `"dangerous"`, `"no_exec"` and `"no_net"` system
-  calls denied; all capabilities dropped.
+  calls denied, terminal-injection `ioctl`s refused; all capabilities
+  dropped; no real-time scheduling (`rtprio = 0`).
 
 - `"install"`: install a package from source. As `"numeric"`, plus
   executing the compiler toolchain (and the dynamic loader, which the
   kernel opens for execution too) and writing to `lib`; only the
-  `"dangerous"` calls are denied.
+  `"dangerous"` calls are denied. Also no real-time scheduling.
 
 - `"plumber"`: serve HTTP. As `"numeric"`, plus binding to `port`; the
-  `"dangerous"` and `"no_exec"` calls are denied.
+  `"dangerous"` and `"no_exec"` calls are denied, sockets are limited to
+  Unix, IPv4 and IPv6 (which, on i386, leaves no sockets at all; see
+  [`syscalls()`](https://pedrobtz.github.io/landlock/reference/policy.md)),
+  and there is no real-time scheduling.
 
 System call sets, character vectors for
 [`syscalls()`](https://pedrobtz.github.io/landlock/reference/policy.md)
@@ -75,6 +79,11 @@ and
 - `"no_net"`: socket creation and use. Also stops DNS, and is the only
   way to stop UDP without a network namespace.
 
+- The groups `"dangerous"` is made of, for finer choices: `"debug"`,
+  `"mount"`, `"namespace"`, `"keyring"`, `"module"`, `"reboot"`,
+  `"swap"`, `"clock"`, `"privileged"`, `"memory"`, `"kernel"`,
+  `"session"`, `"sandbox"`.
+
 Paths that do not exist on this system are left out of the policies.
 
 ## Examples
@@ -87,6 +96,7 @@ preset("numeric")
 #>   fs tmp    the call's own temporary directory (read and write)  
 #>   tcp       bind: none; connect: none
 #>   scope     signal, abstract_unix  
-#>   syscalls  deny 77 calls, action errno 
+#>   limits    rtprio=0 
+#>   syscalls  deny 77 calls, action errno ; terminal injection blocked 
 #>   caps      keep none 
 ```

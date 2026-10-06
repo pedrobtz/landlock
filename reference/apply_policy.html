@@ -86,8 +86,10 @@ setting.</p></dd>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>A report of class <code>lk_report</code>: a data frame with one row per
-requested layer and the columns <code>layer</code>, <code>status</code> (<code>"applied"</code> or
-<code>"skipped"</code>) and <code>detail</code>. Returned invisibly; also available as
+requested layer and the columns <code>layer</code>, <code>status</code> (<code>"applied"</code>,
+<code>"partial"</code> when the kernel's Landlock ABI cannot enforce every right a
+write rule asks for, or <code>"skipped"</code>) and <code>detail</code>. Strict mode fails
+instead of applying a partial or skipped layer. Returned invisibly; also available as
 <code><a href="last_report.html">last_report()</a></code>.</p>
     </div>
     <div class="section level2">

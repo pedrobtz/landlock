@@ -30,6 +30,7 @@ last_report()
 #>   landlock-fs     applied  ABI 7, 15 rules
 #>   landlock-net    applied  TCP bind: none; connect: none
 #>   landlock-scope  applied  signal, abstract_unix
-#>   seccomp         applied  deny 76 calls (errno EPERM); not on this architecture: socketcall; clone() with namespace flags refused
+#>   seccomp         applied  deny 76 calls (errno EPERM); terminal injection ioctls refused; not on this architecture: socketcall; clone() with namespace flags refused
 #>   caps            applied  bounding set kept (needs CAP_SETPCAP); effective, permitted, inheritable and ambient cleared
+#>   limits          applied  rtprio=0
 ```

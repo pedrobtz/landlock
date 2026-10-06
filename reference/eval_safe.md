@@ -24,7 +24,8 @@ eval_safe(
   rlimits = NULL,
   profile = NULL,
   device = pdf,
-  policy = NULL
+  policy = NULL,
+  grace = 0
 )
 
 eval_fork(
@@ -32,7 +33,8 @@ eval_fork(
   tmp = tempfile("fork"),
   std_out = stdout(),
   std_err = stderr(),
-  timeout = 0
+  timeout = 0,
+  grace = 0
 )
 ```
 
@@ -94,6 +96,11 @@ eval_fork(
   that are already open. Connections and graphics devices inherited from
   the session are therefore unusable in the child.
 
+- grace:
+
+  Seconds between `SIGTERM` and `SIGKILL` when the timeout passes; `0`
+  (the default) kills at once.
+
 ## Value
 
 The value of `expr`, visible or invisible as in the child. The report of
@@ -108,8 +115,14 @@ code, and be careful with anything else.
 
 ## Details
 
-The child is killed when `timeout` seconds of wall-clock time pass, or
-when the session is interrupted. Errors in the child are raised again in
+The child is killed when `timeout` seconds of wall-clock time pass, when
+the session is interrupted, and when the session itself dies (so a
+killed R process leaves no sandboxed child running without its timeout).
+On a timeout or an interrupt the child's whole process group is killed,
+which includes the processes it started; when the session dies, only the
+child itself is, and processes it started can outlive it. It runs in a
+session of its own, with no controlling terminal, so it cannot inject
+input into the user's terminal. Errors in the child are raised again in
 the session with their original class. Output the child writes is
 forwarded as it arrives.
 

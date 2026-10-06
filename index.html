@@ -92,8 +92,9 @@
 <span><span class="co">#&gt;   landlock-fs     applied  ABI 7, 14 rules</span></span>
 <span><span class="co">#&gt;   landlock-net    applied  TCP bind: none; connect: none</span></span>
 <span><span class="co">#&gt;   landlock-scope  applied  signal, abstract_unix</span></span>
-<span><span class="co">#&gt;   seccomp         applied  deny 76 calls (errno EPERM); not on this architecture: socketcall; clone() with namespace flags refused</span></span>
-<span><span class="co">#&gt;   caps            applied  bounding set kept (needs CAP_SETPCAP); effective, permitted, inheritable and ambient cleared</span></span></code></pre></div>
+<span><span class="co">#&gt;   seccomp         applied  deny 76 calls (errno EPERM); terminal injection ioctls refused; not on this architecture: socketcall; clone() with namespace flags refused</span></span>
+<span><span class="co">#&gt;   caps            applied  bounding set kept (needs CAP_SETPCAP); effective, permitted, inheritable and ambient cleared</span></span>
+<span><span class="co">#&gt;   limits          applied  rtprio=0</span></span></code></pre></div>
 <p>Policies are plain data and compose:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">p</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/policy.html">policy</a></span><span class="op">(</span><span class="op">)</span> <span class="op">|&gt;</span></span>
@@ -146,7 +147,7 @@
 <tr>
 <td>
 <code><a href="reference/policy.html">syscalls()</a></code> (seccomp)</td>
-<td>the listed system calls</td>
+<td>the listed system calls; terminal-injection <code>ioctl</code>s; other socket families; <code>personality()</code> changes</td>
 <td>Linux 3.5</td>
 <td>yes</td>
 </tr>
@@ -158,8 +159,14 @@
 </tr>
 <tr>
 <td><code><a href="reference/policy.html">limits()</a></code></td>
-<td>memory, CPU time, file size, open files, processes</td>
+<td>memory, CPU time, file size, open files, processes, real-time scheduling</td>
 <td>any Unix</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code><a href="reference/policy.html">deny_write_execute()</a></code></td>
+<td>memory that is both writable and executable</td>
+<td>Linux 6.3</td>
 <td>yes</td>
 </tr>
 <tr>
@@ -176,7 +183,7 @@
 </tr>
 </tbody>
 </table>
-<p>A layer the kernel cannot provide is skipped and reported, never silently ignored; <code>policy(best_effort = FALSE)</code> turns that into an error. <code><a href="reference/status.html">status()</a></code> shows what the running kernel offers:</p>
+<p>A layer the kernel cannot provide is skipped and reported, never silently ignored, and one it can only partly provide is reported as <code>partial</code>; <code>policy(best_effort = FALSE)</code> turns either into an error. Every child also runs in a session of its own, without a controlling terminal, and dies with the R session. <code><a href="reference/status.html">status()</a></code> shows what the running kernel offers:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="reference/status.html">status</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;landlock status&gt; Linux 6.17.0-1022-azure </span></span>
@@ -186,6 +193,7 @@
 <span><span class="co">#&gt;   capabilities   none effective </span></span>
 <span><span class="co">#&gt;   user ns        yes </span></span>
 <span><span class="co">#&gt;   cgroup         v2 </span></span>
+<span><span class="co">#&gt;   TIOCSTI        restricted </span></span>
 <span><span class="co">#&gt;   AppArmor       enabled, profile unconfined </span></span></code></pre></div>
 <p>Off Linux, <code><a href="reference/eval_safe.html">eval_safe()</a></code>, <code><a href="reference/run.html">run()</a></code>, resource limits and the whole <code>unix</code> API work; the confinement layers report themselves as skipped.</p>
 </div>

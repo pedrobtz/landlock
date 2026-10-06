@@ -20,12 +20,16 @@ Describe what the child may do. Policies are plain data.
   [`scope()`](https://pedrobtz.github.io/landlock/reference/policy.md)
   [`limits()`](https://pedrobtz.github.io/landlock/reference/policy.md)
   [`ids()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+  [`umask()`](https://pedrobtz.github.io/landlock/reference/policy.md)
+  [`deny_write_execute()`](https://pedrobtz.github.io/landlock/reference/policy.md)
   [`apparmor()`](https://pedrobtz.github.io/landlock/reference/policy.md)
   [`syscalls()`](https://pedrobtz.github.io/landlock/reference/policy.md)
   [`caps()`](https://pedrobtz.github.io/landlock/reference/policy.md) :
   Build a confinement policy
 - [`preset()`](https://pedrobtz.github.io/landlock/reference/preset.md)
   : Ready-made policies
+- [`seccomp_rules()`](https://pedrobtz.github.io/landlock/reference/seccomp_rules.md)
+  : The seccomp filter a policy produces
 - [`apply_policy()`](https://pedrobtz.github.io/landlock/reference/apply_policy.md)
   [`confine()`](https://pedrobtz.github.io/landlock/reference/apply_policy.md)
   : Apply a policy

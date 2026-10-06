@@ -5,7 +5,7 @@ articles:
   articles/examples: examples.html
   landlock: landlock.html
   layers: layers.html
-last_built: 2026-10-06T18:54Z
+last_built: 2026-10-06T20:18Z
 urls:
   reference: https://pedrobtz.github.io/landlock/reference
   article: https://pedrobtz.github.io/landlock/articles
