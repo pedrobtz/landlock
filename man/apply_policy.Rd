@@ -20,8 +20,10 @@ setting.}
 }
 \value{
 A report of class \code{lk_report}: a data frame with one row per
-requested layer and the columns \code{layer}, \code{status} (\code{"applied"} or
-\code{"skipped"}) and \code{detail}. Returned invisibly; also available as
+requested layer and the columns \code{layer}, \code{status} (\code{"applied"},
+\code{"partial"} when the kernel's Landlock ABI cannot enforce every right a
+write rule asks for, or \code{"skipped"}) and \code{detail}. Strict mode fails
+instead of applying a partial or skipped layer. Returned invisibly; also available as
 \code{\link[=last_report]{last_report()}}.
 }
 \description{

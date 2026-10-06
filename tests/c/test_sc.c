@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #ifdef __linux__
+#include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
 #endif
 
@@ -114,11 +116,76 @@ LK_TEST(too_many)
 #endif
 }
 
+LK_TEST(argument_in_set)
+{
+#ifdef __linux__
+    /* Deny ioctl(TIOCSTI) only: other ioctls keep their normal result. */
+    uint32_t vals[] = { TIOCSTI };
+    struct lk_sc_rule r = { lk_sc_lookup("ioctl"), LK_SC_ERRNO, EPERM, 1, 0, 1, vals };
+    int tsync;
+    int rc = lk_sc_install(&r, 1, 0, &tsync);
+    if (rc == -ENOTSUP)
+        SKIP("no seccomp arch entry for this build");
+    CHECK(rc == 0, "install: %s", strerror(-rc));
+    char c = 'x';
+    errno = 0;
+    CHECK(ioctl(0, TIOCSTI, &c) == -1 && errno == EPERM, "TIOCSTI not refused (errno %d)", errno);
+    int n;
+    errno = 0;
+    int r2 = ioctl(0, FIONREAD, &n);
+    CHECK(!(r2 == -1 && errno == EPERM), "FIONREAD refused too");
+    PASS();
+#else
+    SKIP("not Linux");
+#endif
+}
+
+LK_TEST(argument_not_in_set)
+{
+#ifdef __linux__
+    /* socket(): only AF_UNIX allowed, the rest fail with EAFNOSUPPORT. */
+    uint32_t vals[] = { AF_UNIX };
+    struct lk_sc_rule r = { lk_sc_lookup("socket"), LK_SC_ERRNO, EAFNOSUPPORT, 0, 1, 1, vals };
+    if (r.nr < 0)
+        SKIP("no socket() call on this architecture");
+    int tsync;
+    int rc = lk_sc_install(&r, 1, 0, &tsync);
+    if (rc == -ENOTSUP)
+        SKIP("no seccomp arch entry for this build");
+    CHECK(rc == 0, "install: %s", strerror(-rc));
+    int s = socket(AF_UNIX, SOCK_STREAM, 0);
+    CHECK(s >= 0, "AF_UNIX refused: %s", strerror(errno));
+    close(s);
+    errno = 0;
+    s = socket(AF_INET, SOCK_STREAM, 0);
+    CHECK(s == -1 && errno == EAFNOSUPPORT, "AF_INET allowed (errno %d)", errno);
+    PASS();
+#else
+    SKIP("not Linux");
+#endif
+}
+
+LK_TEST(argument_rule_validation)
+{
+#ifdef __linux__
+    struct lk_sc_rule r = { lk_sc_lookup("ioctl"), LK_SC_ERRNO, EPERM, 6, 0, 0, NULL };
+    int tsync;
+    int rc = lk_sc_install(&r, 1, 0, &tsync);
+    CHECK(rc == -EINVAL || rc == -ENOTSUP, "bad arg index accepted: %d", rc);
+    PASS();
+#else
+    SKIP("not Linux");
+#endif
+}
+
 LK_SUITE(suite_sc) = {
     { "table_and_lookup", table_and_lookup },
     { "errno_action", errno_action },
     { "kill_action", kill_action },
     { "stacked_filters", stacked_filters },
     { "too_many", too_many },
+    { "argument_in_set", argument_in_set },
+    { "argument_not_in_set", argument_not_in_set },
+    { "argument_rule_validation", argument_rule_validation },
     { NULL, NULL }
 };

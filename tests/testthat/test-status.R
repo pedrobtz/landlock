@@ -1,8 +1,9 @@
 test_that("status() has the documented shape", {
   st <- status()
   expect_s3_class(st, "lk_status")
-  expect_named(st, c("os", "kernel", "landlock_abi", "seccomp", "seccomp_filters",
-                     "no_new_privs", "caps", "userns", "cgroup", "apparmor"))
+  expect_named(st, c("os", "kernel", "landlock_abi", "landlock_errata", "seccomp",
+                     "seccomp_filters", "no_new_privs", "caps", "userns", "cgroup", "apparmor",
+                     "tiocsti_legacy"))
   expect_type(st$landlock_abi, "integer")
   expect_gte(st$landlock_abi, 0L)
   expect_named(st$caps, c("effective", "permitted", "inheritable", "bounding", "ambient"))

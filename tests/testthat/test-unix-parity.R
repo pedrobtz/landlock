@@ -47,8 +47,10 @@ test_that("unix formals are kept, in order, with the same defaults", {
 
 test_that("additions are trailing and defaulted", {
   extra <- setdiff(names(formals(eval_safe)), names(unix_formals$eval_safe))
-  expect_identical(extra, "policy")
+  expect_identical(extra, c("policy", "grace"))
   expect_null(formals(eval_safe)$policy)
+  expect_identical(formals(eval_safe)$grace, 0)
+  expect_identical(setdiff(names(formals(eval_fork)), names(unix_formals$eval_fork)), "grace")
 })
 
 test_that("results have the unix shapes", {

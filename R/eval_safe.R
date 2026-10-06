@@ -7,8 +7,14 @@
 #' Both keep the arguments of the 'unix' package functions of the same name,
 #' in the same order; `policy` is added at the end.
 #'
-#' The child is killed when `timeout` seconds of wall-clock time pass, or
-#' when the session is interrupted. Errors in the child are raised again in
+#' The child is killed when `timeout` seconds of wall-clock time pass, when
+#' the session is interrupted, and when the session itself dies (so a killed
+#' R process leaves no sandboxed child running without its timeout). On a
+#' timeout or an interrupt the child's whole process group is killed, which
+#' includes the processes it started; when the session dies, only the child
+#' itself is, and processes it started can outlive it. It
+#' runs in a session of its own, with no controlling terminal, so it cannot
+#' inject input into the user's terminal. Errors in the child are raised again in
 #' the session with their original class. Output the child writes is
 #' forwarded as it arrives.
 #'
@@ -36,6 +42,8 @@
 #'   left at its default it is created for the call and removed afterwards.
 #' @param std_out,std_err Where the child's output goes; see *Output streams*.
 #' @param timeout Wall-clock limit in seconds; `0` for none.
+#' @param grace Seconds between `SIGTERM` and `SIGKILL` when the timeout
+#'   passes; `0` (the default) kills at once.
 #' @param priority Scheduling priority of the child; see [setpriority()].
 #' @param uid,gid User and group to switch to (root only), as ids or names.
 #'   A `uid` without a `gid` takes the user's primary group, and the
@@ -73,7 +81,7 @@
 #' try(eval_safe(Sys.sleep(10), timeout = 1))
 eval_safe <- function(expr, tmp = tempfile("fork"), std_out = stdout(), std_err = stderr(),
                       timeout = 0, priority = NULL, uid = NULL, gid = NULL, rlimits = NULL,
-                      profile = NULL, device = pdf, policy = NULL) {
+                      profile = NULL, device = pdf, policy = NULL, grace = 0) {
   orig_expr <- substitute(expr)
   env <- parent.frame()
   p <- merge_unix_args(policy, rlimits = rlimits, uid = uid, gid = gid, profile = profile)
@@ -92,7 +100,7 @@ eval_safe <- function(expr, tmp = tempfile("fork"), std_out = stdout(), std_err 
   }
   out <- fork_call(child, tmp = tmp, timeout = timeout, std_out = std_out, std_err = std_err,
                    close_fds = !is.null(p), remove_tmp = missing(tmp),
-                   untrusted = !is.null(p))
+                   untrusted = !is.null(p), grace = grace)
   if (!is.null(out$report)) .state$last_report <- out$report
   if (!isTRUE(out$ok)) base::stop(out$error)
   if (isTRUE(out$visible)) out$value else invisible(out$value)
@@ -101,7 +109,7 @@ eval_safe <- function(expr, tmp = tempfile("fork"), std_out = stdout(), std_err 
 #' @rdname eval_safe
 #' @export
 eval_fork <- function(expr, tmp = tempfile("fork"), std_out = stdout(), std_err = stderr(),
-                      timeout = 0) {
+                      timeout = 0, grace = 0) {
   orig_expr <- substitute(expr)
   env <- parent.frame()
   child <- function() {
@@ -110,7 +118,7 @@ eval_fork <- function(expr, tmp = tempfile("fork"), std_out = stdout(), std_err 
     serialize(res, NULL)
   }
   out <- fork_call(child, tmp = tmp, timeout = timeout, std_out = std_out, std_err = std_err,
-                   close_fds = FALSE, remove_tmp = missing(tmp))
+                   close_fds = FALSE, remove_tmp = missing(tmp), grace = grace)
   if (!isTRUE(out$ok)) base::stop(out$error)
   out$value
 }
@@ -119,7 +127,7 @@ eval_fork <- function(expr, tmp = tempfile("fork"), std_out = stdout(), std_err 
 #'
 #' Forks, applies `policy` in the child, closes every inherited file
 #' descriptor except the standard streams, and executes `cmd` (looked up in
-#' `PATH`). Standard input is `/dev/null`.
+#' `PATH`). Standard input is `/dev/null` unless `stdin` names a file.
 #'
 #' @param cmd Program to run.
 #' @param args Character vector of arguments.
@@ -134,6 +142,16 @@ eval_fork <- function(expr, tmp = tempfile("fork"), std_out = stdout(), std_err 
 #'   [eval_safe()].
 #' @param env Named character vector of environment variables to set for the
 #'   program.
+#' @param clear_env If `TRUE`, the program starts with an empty environment
+#'   plus `env`, instead of the session's environment plus `env`.
+#' @param wd Working directory for the program; `NULL` keeps the session's.
+#' @param umask File mode creation mask for the program, as for
+#'   [Sys.umask()]; `NULL` keeps the session's.
+#' @param stdin A file to connect to the program's standard input, opened
+#'   before the policy applies (as a shell redirection would be); `NULL`
+#'   for `/dev/null`.
+#' @param grace Seconds between `SIGTERM` and `SIGKILL` when the timeout
+#'   passes, so the program can clean up; `0` kills at once.
 #' @return A list with `status` (exit status, `NA` if the program was killed
 #'   by a signal), `signal` (the signal, or `NA`), and `stdout` and `stderr`
 #'   (raw vectors when captured, else `NULL`). The report of the applied
@@ -143,11 +161,23 @@ eval_fork <- function(expr, tmp = tempfile("fork"), std_out = stdout(), std_err 
 #' res <- run("echo", "hello")
 #' rawToChar(res$stdout)
 run <- function(cmd, args = character(), policy = NULL, timeout = 0, std_out = TRUE,
-                std_err = TRUE, env = NULL) {
-  stopifnot(is.character(cmd), length(cmd) == 1L, is.character(args))
+                std_err = TRUE, env = NULL, clear_env = FALSE, wd = NULL, umask = NULL,
+                stdin = NULL, grace = 0) {
+  stopifnot(is.character(cmd), length(cmd) == 1L, is.character(args),
+            is.logical(clear_env), length(clear_env) == 1L, !is.na(clear_env))
   if (!is.null(policy)) check_policy(policy)
   if (length(env) && (is.null(names(env)) || any(!nzchar(names(env)))))
     stop("env must be a named character vector", call. = FALSE)
+  if (!is.null(wd)) {
+    stopifnot(is.character(wd), length(wd) == 1L)
+    if (!dir.exists(wd)) stop("wd: directory does not exist: ", wd, call. = FALSE)
+    wd <- normalizePath(wd)
+  }
+  if (!is.null(stdin)) {
+    stopifnot(is.character(stdin), length(stdin) == 1L)
+    if (!file.exists(stdin)) stop("stdin: file does not exist: ", stdin, call. = FALSE)
+    stdin <- normalizePath(stdin)
+  }
   captured <- new.env(parent = emptyenv())
   sink_for <- function(x, which) {
     if (isTRUE(x)) {
@@ -159,7 +189,15 @@ run <- function(cmd, args = character(), policy = NULL, timeout = 0, std_out = T
     res <- tryCatch({
       report <- if (!is.null(policy)) apply_policy(policy) else NULL
       .Call(C_write_frame, "R", serialize(report, NULL))
+      if (clear_env) {
+        keep <- Sys.getenv(c("TMPDIR", "TMP", "TEMP"), unset = NA)
+        Sys.unsetenv(names(Sys.getenv()))
+        keep <- keep[!is.na(keep)]
+        if (length(keep)) do.call(Sys.setenv, as.list(keep))
+      }
       if (length(env)) do.call(Sys.setenv, as.list(env))
+      if (!is.null(wd)) setwd(wd)
+      if (!is.null(umask)) Sys.umask(umask)
       simpleError(.Call(C_exec, cmd, args))
     }, error = function(e) e)
     serialize(list(ok = FALSE, error = res), NULL)
@@ -167,7 +205,7 @@ run <- function(cmd, args = character(), policy = NULL, timeout = 0, std_out = T
   res <- fork_call(child, tmp = tempfile("run"), timeout = timeout,
                    std_out = sink_for(std_out, "out"), std_err = sink_for(std_err, "err"),
                    close_fds = TRUE, capture_r_output = FALSE, mode = "run",
-                   remove_tmp = TRUE, untrusted = TRUE)
+                   remove_tmp = TRUE, untrusted = TRUE, stdin = stdin, grace = grace)
   joined <- function(which) if (is.null(captured[[which]])) NULL else do.call(c, c(list(raw()), captured[[which]]))
   list(status = res$exit_code, signal = res$signal, stdout = joined("out"), stderr = joined("err"))
 }
@@ -237,7 +275,7 @@ output_callback <- function(x, default) {
 # result (eval mode) or the process outcome (run mode).
 fork_call <- function(child, tmp, timeout, std_out, std_err, close_fds,
                       capture_r_output = TRUE, mode = c("eval", "run"),
-                      remove_tmp = FALSE, untrusted = FALSE) {
+                      remove_tmp = FALSE, untrusted = FALSE, stdin = NULL, grace = 0) {
   mode <- match.arg(mode)
   out <- output_callback(std_out, stdout())
   err <- output_callback(std_err, stderr())
@@ -257,6 +295,7 @@ fork_call <- function(child, tmp, timeout, std_out, std_err, close_fds,
     tmp <- normalizePath(tmp)
     if (remove_tmp && created) on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
   }
+  stopifnot(is.numeric(grace), length(grace) == 1L, !is.na(grace), grace >= 0)
   load_namespace()
   max_result <- getOption("landlock.max_result", 2^31)
   if (!is.numeric(max_result) || length(max_result) != 1L || is.na(max_result) || max_result <= 0)
@@ -267,7 +306,7 @@ fork_call <- function(child, tmp, timeout, std_out, std_err, close_fds,
     child()
   }
   res <- .Call(C_fork_eval, wrapped, timeout, out$fun, err$fun, isTRUE(close_fds),
-               as.double(max_result))
+               as.double(max_result), stdin, as.double(grace))
   if (isTRUE(res$oversize))
     stop(sprintf("the child's result is larger than %s bytes (options(landlock.max_result))",
                  format(max_result, scientific = FALSE)), call. = FALSE)

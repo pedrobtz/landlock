@@ -9,7 +9,8 @@ SEXP C_ll_abi(void);
 SEXP C_ll_restrict(SEXP paths, SEXP modes, SEXP bind, SEXP connect, SEXP flags);
 SEXP C_sc_table(void);
 SEXP C_sc_lookup(SEXP names);
-SEXP C_sc_install(SEXP nrs, SEXP actions, SEXP errnums, SEXP deny_clone_ns);
+SEXP C_sc_install(SEXP nrs, SEXP actions, SEXP errnums, SEXP args, SEXP negates, SEXP vals,
+                  SEXP deny_clone_ns);
 SEXP C_sc_status(void);
 SEXP C_errno_value(SEXP name);
 SEXP C_cap_last(void);
@@ -17,6 +18,10 @@ SEXP C_caps_drop_bounding(SEXP keep);
 SEXP C_caps_clear(SEXP keep);
 SEXP C_nnp_set(void);
 SEXP C_nnp_get(void);
+SEXP C_mdwe_set(void);
+SEXP C_ll_errata(void);
+SEXP C_tty_ioctls(void);
+SEXP C_af_value(SEXP name);
 SEXP C_strerror(SEXP err);
 SEXP C_rlimit_get(SEXP name);
 SEXP C_rlimit_set(SEXP name, SEXP cur, SEXP max);
@@ -36,11 +41,18 @@ SEXP C_userns_works(void);
 SEXP C_user_info(SEXP input);
 SEXP C_group_info(SEXP input);
 SEXP C_fork_eval(SEXP fun, SEXP timeout, SEXP outfun, SEXP errfun, SEXP close_fds,
-                 SEXP max_result);
+                 SEXP max_result, SEXP stdin_path, SEXP grace);
 SEXP C_child_abort(void);
 SEXP C_write_frame(SEXP type, SEXP data);
 SEXP C_exec(SEXP cmd, SEXP args);
 SEXP C_strsignal(SEXP sig);
+SEXP C_rearm_pdeathsig(void);
+SEXP C_test_tiocsti(void);
+SEXP C_test_socket(SEXP family);
+SEXP C_test_mmap_wx(void);
+SEXP C_test_personality(SEXP value);
+SEXP C_test_pdeathsig(void);
+SEXP C_test_has_tty(void);
 SEXP C_test_open_fd(SEXP path);
 SEXP C_test_read_fd(SEXP fd);
 SEXP C_test_close_fd(SEXP fd);
@@ -53,7 +65,7 @@ static const R_CallMethodDef call_methods[] = {
     {"C_ll_restrict", (DL_FUNC) &C_ll_restrict, 5},
     {"C_sc_table", (DL_FUNC) &C_sc_table, 0},
     {"C_sc_lookup", (DL_FUNC) &C_sc_lookup, 1},
-    {"C_sc_install", (DL_FUNC) &C_sc_install, 4},
+    {"C_sc_install", (DL_FUNC) &C_sc_install, 7},
     {"C_sc_status", (DL_FUNC) &C_sc_status, 0},
     {"C_errno_value", (DL_FUNC) &C_errno_value, 1},
     {"C_cap_last", (DL_FUNC) &C_cap_last, 0},
@@ -61,6 +73,10 @@ static const R_CallMethodDef call_methods[] = {
     {"C_caps_clear", (DL_FUNC) &C_caps_clear, 1},
     {"C_nnp_set", (DL_FUNC) &C_nnp_set, 0},
     {"C_nnp_get", (DL_FUNC) &C_nnp_get, 0},
+    {"C_mdwe_set", (DL_FUNC) &C_mdwe_set, 0},
+    {"C_ll_errata", (DL_FUNC) &C_ll_errata, 0},
+    {"C_tty_ioctls", (DL_FUNC) &C_tty_ioctls, 0},
+    {"C_af_value", (DL_FUNC) &C_af_value, 1},
     {"C_strerror", (DL_FUNC) &C_strerror, 1},
     {"C_rlimit_get", (DL_FUNC) &C_rlimit_get, 1},
     {"C_rlimit_set", (DL_FUNC) &C_rlimit_set, 3},
@@ -79,11 +95,18 @@ static const R_CallMethodDef call_methods[] = {
     {"C_userns_works", (DL_FUNC) &C_userns_works, 0},
     {"C_user_info", (DL_FUNC) &C_user_info, 1},
     {"C_group_info", (DL_FUNC) &C_group_info, 1},
-    {"C_fork_eval", (DL_FUNC) &C_fork_eval, 6},
+    {"C_fork_eval", (DL_FUNC) &C_fork_eval, 8},
     {"C_child_abort", (DL_FUNC) &C_child_abort, 0},
     {"C_write_frame", (DL_FUNC) &C_write_frame, 2},
     {"C_exec", (DL_FUNC) &C_exec, 2},
     {"C_strsignal", (DL_FUNC) &C_strsignal, 1},
+    {"C_rearm_pdeathsig", (DL_FUNC) &C_rearm_pdeathsig, 0},
+    {"C_test_tiocsti", (DL_FUNC) &C_test_tiocsti, 0},
+    {"C_test_socket", (DL_FUNC) &C_test_socket, 1},
+    {"C_test_mmap_wx", (DL_FUNC) &C_test_mmap_wx, 0},
+    {"C_test_personality", (DL_FUNC) &C_test_personality, 1},
+    {"C_test_pdeathsig", (DL_FUNC) &C_test_pdeathsig, 0},
+    {"C_test_has_tty", (DL_FUNC) &C_test_has_tty, 0},
     {"C_test_open_fd", (DL_FUNC) &C_test_open_fd, 1},
     {"C_test_read_fd", (DL_FUNC) &C_test_read_fd, 1},
     {"C_test_close_fd", (DL_FUNC) &C_test_close_fd, 1},

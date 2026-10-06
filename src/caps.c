@@ -79,6 +79,12 @@ int lk_nnp_set(void)
     return prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 ? -errno : 0;
 }
 
+int lk_mdwe_set(void)
+{
+    /* -EINVAL before Linux 6.3, which lacks PR_SET_MDWE. */
+    return prctl(PR_SET_MDWE, PR_MDWE_REFUSE_EXEC_GAIN, 0, 0, 0) != 0 ? -errno : 0;
+}
+
 int lk_nnp_get(void)
 {
     int r = prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0);
@@ -105,6 +111,11 @@ int lk_caps_clear(const int *keep, size_t nkeep)
 }
 
 int lk_nnp_set(void)
+{
+    return -ENOSYS;
+}
+
+int lk_mdwe_set(void)
 {
     return -ENOSYS;
 }

@@ -48,6 +48,14 @@ struct lk_sock_fprog {    /* struct sock_fprog */
 #define LK_CLONE_FLAGS_OFF LK_SECCOMP_DATA_ARGS
 #endif
 
+/* Offset of the low 32 bits of args[i]: +4 within the 64-bit slot on
+ * big-endian. */
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#define LK_SECCOMP_ARG_LO(i) (LK_SECCOMP_DATA_ARGS + 8 * (uint32_t) (i) + 4)
+#else
+#define LK_SECCOMP_ARG_LO(i) (LK_SECCOMP_DATA_ARGS + 8 * (uint32_t) (i))
+#endif
+
 /* CLONE_NEWTIME | NEWNS | NEWCGROUP | NEWUTS | NEWIPC | NEWUSER | NEWPID | NEWNET */
 #define LK_CLONE_NEW_MASK 0x7E020080U
 

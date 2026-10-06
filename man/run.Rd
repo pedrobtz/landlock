@@ -11,7 +11,12 @@ run(
   timeout = 0,
   std_out = TRUE,
   std_err = TRUE,
-  env = NULL
+  env = NULL,
+  clear_env = FALSE,
+  wd = NULL,
+  umask = NULL,
+  stdin = NULL,
+  grace = 0
 )
 }
 \arguments{
@@ -33,6 +38,21 @@ or \code{NULL} to discard it, or a file name, connection or function as in
 
 \item{env}{Named character vector of environment variables to set for the
 program.}
+
+\item{clear_env}{If \code{TRUE}, the program starts with an empty environment
+plus \code{env}, instead of the session's environment plus \code{env}.}
+
+\item{wd}{Working directory for the program; \code{NULL} keeps the session's.}
+
+\item{umask}{File mode creation mask for the program, as for
+\code{\link[=Sys.umask]{Sys.umask()}}; \code{NULL} keeps the session's.}
+
+\item{stdin}{A file to connect to the program's standard input, opened
+before the policy applies (as a shell redirection would be); \code{NULL}
+for \verb{/dev/null}.}
+
+\item{grace}{Seconds between \code{SIGTERM} and \code{SIGKILL} when the timeout
+passes, so the program can clean up; \code{0} kills at once.}
 }
 \value{
 A list with \code{status} (exit status, \code{NA} if the program was killed
@@ -43,7 +63,7 @@ policy is available as \code{\link[=last_report]{last_report()}}.
 \description{
 Forks, applies \code{policy} in the child, closes every inherited file
 descriptor except the standard streams, and executes \code{cmd} (looked up in
-\code{PATH}). Standard input is \verb{/dev/null}.
+\code{PATH}). Standard input is \verb{/dev/null} unless \code{stdin} names a file.
 }
 \examples{
 res <- run("echo", "hello")

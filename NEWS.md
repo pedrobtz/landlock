@@ -30,3 +30,21 @@ First release.
 * Single-layer functions for the calling process: `restrict_self()`,
   `seccomp_deny()`, `caps_drop_all()`, `caps_keep()`, `no_new_privs()`,
   `setids()`.
+
+* Features found in other sandboxes (bubblewrap, nsjail, Flatpak, systemd,
+  Docker, the Rust and Go Landlock bindings):
+  * every child runs in a session of its own, without a controlling
+    terminal, and dies with the R session;
+  * `run()` gains `wd`, `umask`, `clear_env` and `stdin`; `eval_safe()`,
+    `eval_fork()` and `run()` gain `grace`, a period between `SIGTERM` and
+    `SIGKILL` at the timeout;
+  * `syscalls()` gains `block_tty`, `socket_families` and
+    `lock_personality`, which look at system call arguments; the presets
+    block terminal injection;
+  * the `"dangerous"` system call set is made of named groups, and
+    `seccomp_rules()` lists the exact filter a policy produces;
+  * `fs(missing = "ignore")`; further `limits()` (`rtprio`, `nice`,
+    `sigpending`, `msgqueue`, `rttime`, `rss`, `locks`), with `rtprio = 0`
+    in every preset; `umask()`; `deny_write_execute()`;
+  * reports show `partial` when Landlock cannot enforce every right of a
+    write rule; `status()` reports Landlock errata and `legacy_tiocsti`.

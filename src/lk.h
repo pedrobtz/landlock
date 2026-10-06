@@ -56,6 +56,10 @@ int lk_ll_restrict(const struct lk_ll_policy *p, struct lk_ll_report *r);
 /* Filesystem rights the given ABI knows (the "handled" set); 0 for abi <= 0. */
 uint64_t lk_ll_handled_fs(int abi);
 
+/* Bitmask of Landlock errata fixed in the running kernel (Linux 6.15+);
+ * -errno where the query is not supported. */
+int lk_ll_errata(void);
+
 /* ---- seccomp (sc.c) ---------------------------------------------------- */
 
 enum { LK_SC_ERRNO = 0, LK_SC_KILL_PROCESS = 1, LK_SC_LOG = 2, LK_SC_TRAP = 3 };
@@ -77,8 +81,12 @@ int lk_sc_deny(const int *nrs, size_t n, int action, int errnum, int *tsync);
  * does not cover. */
 struct lk_sc_rule {
     int nr;
-    int action;   /* LK_SC_* */
-    int errnum;   /* for LK_SC_ERRNO */
+    int action;            /* LK_SC_* */
+    int errnum;            /* for LK_SC_ERRNO */
+    int arg;               /* -1: every call; 0-5: only when the low 32 bits of args[arg]... */
+    int negate;            /* ...are among vals (0), or are not (1) */
+    size_t nvals;
+    const uint32_t *vals;
 };
 int lk_sc_install(const struct lk_sc_rule *rules, size_t n, int deny_clone_ns, int *tsync);
 
@@ -89,6 +97,10 @@ int lk_caps_drop_bounding(const int *keep, size_t nkeep);  /* needs CAP_SETPCAP 
 int lk_caps_clear(const int *keep, size_t nkeep);          /* sets := sets & keep; ambient cleared */
 int lk_nnp_set(void);
 int lk_nnp_get(void);                           /* 0 or 1 */
+
+/* Memory-deny-write-execute: no mapping may become both writable and
+ * executable. Irreversible; -EINVAL before Linux 6.3. */
+int lk_mdwe_set(void);
 
 /* ---- Limits, ids, priority, chroot, AppArmor (lim.c) ------------------ */
 
@@ -152,6 +164,14 @@ int lk_kill(pid_t pid, int sig);
 /* Close the given fds, flush stdio, then raise(SIGKILL). Never returns.
  * Used instead of _exit(), which R CMD check flags in package code. */
 void lk_child_exit(const int *fds, size_t nfds);
+
+/* setsid(): a new session with no controlling terminal, so the process
+ * cannot inject input into the user's terminal (TIOCSTI). */
+int lk_new_session(void);
+
+/* SIGKILL when `parent` dies. Fails with -ESRCH when it already has. The
+ * kernel clears this on a credential change; call again after one. */
+int lk_die_with_parent(pid_t parent);
 
 /* 1 if a forked child can unshare(CLONE_NEWUSER), 0 if not, -errno on
  * failure to probe. Always 0 off Linux. */

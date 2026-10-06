@@ -57,8 +57,9 @@ last_report()
 #>   landlock-fs     applied  ABI 7, 14 rules
 #>   landlock-net    applied  TCP bind: none; connect: none
 #>   landlock-scope  applied  signal, abstract_unix
-#>   seccomp         applied  deny 76 calls (errno EPERM); not on this architecture: socketcall; clone() with namespace flags refused
+#>   seccomp         applied  deny 76 calls (errno EPERM); terminal injection ioctls refused; not on this architecture: socketcall; clone() with namespace flags refused
 #>   caps            applied  bounding set kept (needs CAP_SETPCAP); effective, permitted, inheritable and ambient cleared
+#>   limits          applied  rtprio=0
 ```
 
 Policies are plain data and compose:
@@ -81,14 +82,18 @@ run("pandoc", c("in.md", "-o", "out.html"), policy = p)
 | `fs()` (Landlock) | reading, writing, executing outside listed paths | Linux 5.13 | yes |
 | `net()` (Landlock) | TCP bind and connect outside listed ports | Linux 6.7 | yes |
 | `scope()` (Landlock) | signals and abstract sockets beyond the sandbox | Linux 6.12 | yes |
-| `syscalls()` (seccomp) | the listed system calls | Linux 3.5 | yes |
+| `syscalls()` (seccomp) | the listed system calls; terminal-injection `ioctl`s; other socket families; `personality()` changes | Linux 3.5 | yes |
 | `caps()` | capabilities, and regaining them | Linux | yes |
-| `limits()` | memory, CPU time, file size, open files, processes | any Unix | yes |
+| `limits()` | memory, CPU time, file size, open files, processes, real-time scheduling | any Unix | yes |
+| `deny_write_execute()` | memory that is both writable and executable | Linux 6.3 | yes |
 | `ids()` | running as the current user (root only) | any Unix | yes |
 | `apparmor()` | what the AppArmor profile forbids | AppArmor | host-dependent |
 
 A layer the kernel cannot provide is skipped and reported, never silently
-ignored; `policy(best_effort = FALSE)` turns that into an error. `status()`
+ignored, and one it can only partly provide is reported as `partial`;
+`policy(best_effort = FALSE)` turns either into an error. Every child also
+runs in a session of its own, without a controlling terminal, and dies with
+the R session. `status()`
 shows what the running kernel offers:
 
 ```r
@@ -100,6 +105,7 @@ status()
 #>   capabilities   none effective 
 #>   user ns        yes 
 #>   cgroup         v2 
+#>   TIOCSTI        restricted 
 #>   AppArmor       enabled, profile unconfined 
 ```
 

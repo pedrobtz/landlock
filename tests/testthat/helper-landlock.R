@@ -46,3 +46,26 @@ under_asan <- function() {
   maps <- "/proc/self/maps"
   file.exists(maps) && any(grepl("libasan|libclang_rt\\.asan", readLines(maps, warn = FALSE)))
 }
+
+getsid_is_self <- function() {
+  stat <- "/proc/self/stat"
+  if (!file.exists(stat)) return(TRUE)  # macOS: covered by the C harness
+  f <- strsplit(sub("^.*\\) ", "", readLines(stat, warn = FALSE)), " ")[[1]]
+  identical(as.integer(f[4]), Sys.getpid())  # field 6 of stat, the session id
+}
+
+process_alive <- function(pid) {
+  if (identical(tryCatch(kill(pid, 0L), error = function(e) "gone"), "gone")) return(FALSE)
+  stat <- sprintf("/proc/%d/stat", pid)
+  if (!file.exists(stat)) return(TRUE)
+  f <- strsplit(sub("^.*\\) ", "", readLines(stat, warn = FALSE)), " ")[[1]]
+  !identical(f[1], "Z")
+}
+
+rlimit_get <- function(name) {
+  v <- .Call(C_rlimit_get, name)
+  c(cur = v[[1]], max = v[[2]])
+}
+
+personality_query <- function() .Call(C_test_personality, 0xffffffff)
+personality_set <- function(value) .Call(C_test_personality, value)

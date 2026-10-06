@@ -25,10 +25,32 @@ static const struct { const char *name; int res; } rlimits[] = {
     { "nproc", RLIMIT_NPROC },
 #endif
     { "stack", RLIMIT_STACK },
+#ifdef RLIMIT_RSS
+    { "rss", RLIMIT_RSS },
+#endif
+#ifdef RLIMIT_LOCKS
+    { "locks", RLIMIT_LOCKS },
+#endif
+#ifdef RLIMIT_SIGPENDING
+    { "sigpending", RLIMIT_SIGPENDING },
+#endif
+#ifdef RLIMIT_MSGQUEUE
+    { "msgqueue", RLIMIT_MSGQUEUE },
+#endif
+#ifdef RLIMIT_NICE
+    { "nice", RLIMIT_NICE },
+#endif
+#ifdef RLIMIT_RTPRIO
+    { "rtprio", RLIMIT_RTPRIO },
+#endif
+#ifdef RLIMIT_RTTIME
+    { "rttime", RLIMIT_RTTIME },
+#endif
 };
 
 static const char *known_rlimits[] = {
-    "as", "core", "cpu", "data", "fsize", "memlock", "nofile", "nproc", "stack"
+    "as", "core", "cpu", "data", "fsize", "memlock", "nofile", "nproc", "stack",
+    "rss", "locks", "sigpending", "msgqueue", "nice", "rtprio", "rttime"
 };
 
 int lk_rlimit_lookup(const char *name)

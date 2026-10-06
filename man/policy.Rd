@@ -7,6 +7,8 @@
 \alias{scope}
 \alias{limits}
 \alias{ids}
+\alias{umask}
+\alias{deny_write_execute}
 \alias{apparmor}
 \alias{syscalls}
 \alias{caps}
@@ -14,7 +16,15 @@
 \usage{
 policy(best_effort = TRUE, log = NULL)
 
-fs(p, read = NULL, write = NULL, exec = NULL, rw = NULL, tmp = FALSE)
+fs(
+  p,
+  read = NULL,
+  write = NULL,
+  exec = NULL,
+  rw = NULL,
+  tmp = FALSE,
+  missing = c("error", "ignore")
+)
 
 net(p, bind = integer(), connect = integer())
 
@@ -30,14 +40,33 @@ limits(
   core = NULL,
   stack = NULL,
   data = NULL,
-  memlock = NULL
+  memlock = NULL,
+  rss = NULL,
+  locks = NULL,
+  sigpending = NULL,
+  msgqueue = NULL,
+  nice = NULL,
+  rtprio = NULL,
+  rttime = NULL
 )
 
 ids(p, uid = NULL, gid = NULL)
 
+umask(p, mask)
+
+deny_write_execute(p)
+
 apparmor(p, profile)
 
-syscalls(p, deny, action = c("errno", "kill", "log", "trap"), errno = "EPERM")
+syscalls(
+  p,
+  deny = character(),
+  action = c("errno", "kill", "log", "trap"),
+  errno = "EPERM",
+  block_tty = FALSE,
+  socket_families = NULL,
+  lock_personality = FALSE
+)
 
 caps(p, keep = character())
 }
@@ -60,6 +89,10 @@ created for the call and, by default, removed afterwards. The session's
 \code{\link[=tempdir]{tempdir()}} is deliberately not granted: the session may later trust
 what it finds there.}
 
+\item{missing}{What to do, when the policy is applied, with a path that
+does not exist: \code{"error"} (the default) or \code{"ignore"} it, naming it in
+the report. Useful for policies shared between machines.}
+
 \item{bind, connect}{Integer vectors of TCP ports that may be bound to or
 connected to.}
 
@@ -68,13 +101,37 @@ connected to.}
 \item{memory, cpu, fsize, nofile, pids, core, stack, data, memlock}{Resource
 ceilings; \code{NULL} leaves a resource alone.}
 
+\item{rss, locks, sigpending, msgqueue, nice, rtprio, rttime}{Further
+resource limits (Linux): resident set size, file locks, queued signals,
+bytes in POSIX message queues, the nice ceiling (as \code{20 - value}),
+real-time priority (\code{0} forbids real-time scheduling) and real-time CPU
+time in microseconds. A limit the platform lacks is skipped and reported.}
+
 \item{uid, gid}{User and group, as numeric ids or names.}
+
+\item{mask}{File mode creation mask, as for \code{\link[=Sys.umask]{Sys.umask()}}, for example
+\code{"077"} so that every file the child creates is private.}
 
 \item{profile}{Name of an AppArmor profile.}
 
 \item{deny}{Character vector of system call names.}
 
 \item{action, errno}{See \code{\link[=seccomp_deny]{seccomp_deny()}}.}
+
+\item{block_tty}{If \code{TRUE}, refuse the \code{ioctl()} requests that push input
+into a terminal or reprogram it (\code{TIOCSTI}, \code{TIOCLINUX}), as Flatpak
+does.}
+
+\item{socket_families}{If not \code{NULL}, \code{socket()} may only create sockets
+of these families (any of \code{"unix"}, \code{"inet"}, \code{"inet6"}, \code{"netlink"},
+\code{"packet"}, \code{"vsock"}); others fail with \code{EAFNOSUPPORT}. On i386 the C
+library creates sockets through \code{socketcall()}, which hides the family
+from the filter; \code{socketcall()} is then refused outright, so no socket
+of any family can be created there.}
+
+\item{lock_personality}{If \code{TRUE}, \code{personality()} may only query or set
+the default execution domains, as in Docker's profile: no turning off
+address-space randomization.}
 
 \item{keep}{Capability names to keep; see \code{\link[=caps_keep]{caps_keep()}}.}
 }
@@ -117,6 +174,12 @@ does.
 Calling \code{syscalls()} again adds to the list.
 \item \code{caps()}: drop every capability except \code{keep} and set \code{no_new_privs};
 see \code{\link[=caps_drop_all]{caps_drop_all()}}.
+\item \code{umask()}: the file mode creation mask of the child, so that files it
+creates get the intended permissions.
+\item \code{deny_write_execute()}: no memory mapping may become both writable and
+executable (Linux 6.3, \code{PR_SET_MDWE}), which stops code injected into
+writable memory from running. Breaks just-in-time compilers (V8, LLVM);
+no preset uses it.
 }
 }
 \examples{

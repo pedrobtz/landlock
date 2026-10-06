@@ -552,6 +552,47 @@ flavours; `main` is on `0.1.0.9000`.
 
 ---
 
+## Parity with other sandboxes (after Stage 7, before submission)
+
+A survey of the Rust, Go and Python Landlock bindings, libseccomp,
+Docker's and Flatpak's seccomp rules, bubblewrap, nsjail, minijail,
+firejail and systemd's sandboxing options listed what they offer and this
+package lacked. Added, as far as the C core supports it with little glue:
+
+- [x] New session for every child (`setsid`), as bwrap `--new-session`.
+- [x] Die with the session (`PR_SET_PDEATHSIG`), as bwrap `--die-with-parent`,
+      armed again after `setids`.
+- [x] `run(wd, umask, clear_env, stdin)`; `grace` on `eval_safe()`,
+      `eval_fork()` and `run()`.
+- [x] seccomp argument rules: `block_tty`, `socket_families`,
+      `lock_personality`; terminal ioctls blocked in the presets.
+- [x] Named syscall groups and `seccomp_rules()` (the filter as a table,
+      like libseccomp's `export_pfc`); `fs(missing = "ignore")`; further
+      rlimits, `rtprio = 0` in every preset; a `umask()` verb;
+      `deny_write_execute()` (PR_SET_MDWE); `partial` enforcement in the
+      report; `status()` errata and `legacy_tiocsti`.
+- [x] Documented: die-with-parent covers the child only; its own children
+      are killed with its process group on a timeout or interrupt, but can
+      outlive a session that dies.
+
+Not added on purpose: `rlimit_*()` wrappers for the new resources.
+`limits()` sets them in a policy, and further `rlimit_*` exports would go
+beyond the `unix` API the package mirrors.
+
+Deferred, with the reason:
+
+- Landlock ABI 8–11 (TSYNC, pathname Unix sockets, UDP, NNP flag): the
+  constants are in the kernel headers, but no CI kernel offers these ABIs
+  yet (GitHub's runners report ABI 7), so the code could not be tested
+  against a real kernel. Add when the runners' kernels do.
+- seccomp allow-list mode: R's system call footprint varies with BLAS and
+  packages; needs the M5 tracing tool to build a safe list.
+- Library discovery for `run()` (`ldd`-style): runs or parses untrusted
+  binaries; after M5.
+- Securebits, `PR_SET_TSC`, CPU affinity: low value for confining R.
+- Namespaces, private /tmp and network, cgroups, seccomp user
+  notification: 0.2.0 (M3, M4).
+
 ## Standing rules while building
 
 - Every commit installs and passes `R CMD check` on Linux; the C harness is
